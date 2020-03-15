@@ -10,7 +10,7 @@
 sudo su postgres
 createuser pi -P --interactive
 ```
-* Postgres credentials: username = pi, password = treefeller
+* Postgres credentials: username = pi, password = homepower
 ### Create 'power' database
 ```shell
 psql postgres
@@ -20,7 +20,6 @@ create database power;
 ```shell
 psql power -U pi -f dbcreate.sql
 ```
-
 ### Connect to database
 ```shell
 psql power -U pi

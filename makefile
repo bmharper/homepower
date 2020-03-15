@@ -3,7 +3,7 @@
 CC := clang
 #CXX := clang++ -std=c++11 -ggdb -lpthread
 CXX := clang++ -std=c++11
-LINK := clang++ -lwiringPi
+LINK := clang++ -lwiringPi -lpthread
 CXX_EXE_OUT := -o  
 CC_OBJ_OUT := -o  
 CXX_OBJ_OUT := -o  
@@ -20,7 +20,7 @@ print-% : ; @echo $* = $($*)
 
 INVERTER_CPP := inverter.cpp
 
-SERVER_CPP := server/server.cpp server/http.cpp server/controller.cpp phttp/phttp.cpp
+SERVER_CPP := server/server.cpp server/http.cpp server/controller.cpp server/monitor.cpp phttp/phttp.cpp
 SERVER_C := phttp/sha1.c phttp/http11/http11_parser.c
 
 SERVER_OBJ = $(patsubst %.cpp, $(OUT)/%$(OBJ), $(SERVER_CPP)) $(patsubst %.c, $(OUT)/%$(OBJ), $(SERVER_C))

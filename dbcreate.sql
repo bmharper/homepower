@@ -15,5 +15,6 @@ CREATE TABLE readings (
 	temp REAL,
 	pvA REAL,
 	pvV REAL,
-	pvW REAL
+	pvW REAL,
+	heavy BOOLEAN
 );

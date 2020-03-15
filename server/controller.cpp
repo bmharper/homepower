@@ -1,22 +1,63 @@
 #include <time.h>
+#include <unistd.h>
 #include <wiringPi.h>
 #include "controller.h"
+#include "monitor.h"
+
+using namespace std;
 
 namespace homepower {
 
-Controller::Controller() {
+const char* ModeToString(PowerMode mode) {
+	switch (mode) {
+	case PowerMode::Off: return "Off";
+	case PowerMode::Grid: return "Grid";
+	case PowerMode::Inverter: return "Inverter";
+	}
+}
+
+TimePoint TimePoint::Now(int timezoneOffsetMinutes) {
+	auto t = time(nullptr);
+	tm   tt;
+	gmtime_r(&t, &tt);
+	int sec = tt.tm_hour * 3600 + tt.tm_min * 60 + tt.tm_sec;
+	sec += timezoneOffsetMinutes * 60;
+	if (sec < 0)
+		sec += 24 * 3600;
+	sec = sec % (24 * 3600);
+	TimePoint tp;
+	tp.Hour   = sec / 3600;
+	tp.Minute = (sec - tp.Hour * 3600) / 60;
+	return tp;
+}
+
+Controller::Controller(homepower::Monitor* monitor) {
 	// I don't know of any way to read the state of the GPIO output pins using WiringPI,
 	// so in order to know our state at startup, we need to create it.
 	// This seems like a conservative thing to do anyway.
 	// I'm sure there is a way to read the state using other mechanisms, but I don't
 	// have any need for that, because this server is intended to come on and stay
 	// on for months, without a restart.
+	Monitor = monitor;
 	wiringPiSetup();
 	pinMode(GpioPinGrid, OUTPUT);
 	pinMode(GpioPinInverter, OUTPUT);
 	digitalWrite(GpioPinGrid, 0);
 	digitalWrite(GpioPinInverter, 0);
-	Mode = PowerMode::Off;
+	Mode     = PowerMode::Off;
+	auto now = Now();
+	printf("Time now (local): %d:%02d\n", now.Hour, now.Minute);
+}
+
+void Controller::Start() {
+	Thread = thread([&]() {
+		Run();
+	});
+}
+
+void Controller::Stop() {
+	MustExit = true;
+	Thread.join();
 }
 
 void Controller::SetMode(PowerMode m, bool forceWrite) {
@@ -25,22 +66,55 @@ void Controller::SetMode(PowerMode m, bool forceWrite) {
 
 	timespec pause;
 	pause.tv_sec  = 0;
-	pause.tv_nsec = SleepMilliseconds * 1000000;
+	pause.tv_nsec = SleepMilliseconds * 1000 * 1000;
 
 	if (m == PowerMode::Inverter) {
 		digitalWrite(GpioPinGrid, 0);
 		nanosleep(&pause, nullptr);
 		digitalWrite(GpioPinInverter, 1);
+		Monitor->IsHeavyOnInverter = true;
 	} else if (m == PowerMode::Grid) {
 		digitalWrite(GpioPinInverter, 0);
 		nanosleep(&pause, nullptr);
 		digitalWrite(GpioPinGrid, 1);
+		Monitor->IsHeavyOnInverter = false;
 	} else if (m == PowerMode::Off) {
 		digitalWrite(GpioPinInverter, 0);
 		digitalWrite(GpioPinGrid, 0);
+		Monitor->IsHeavyOnInverter = false;
 	}
 
 	Mode = m;
+}
+
+void Controller::Run() {
+	while (!MustExit) {
+		time_t    now     = time(nullptr);
+		auto      nowP    = Now();
+		PowerMode desired = PowerMode::Grid;
+
+		bool isSolarTime      = nowP > SolarOnAt && nowP < SolarOffAt;
+		bool hasGridPower     = Monitor->HasGridPower;
+		bool haveSolarVoltage = Monitor->SolarV > MinSolarVoltage;
+		if (!Monitor->IsOverloaded && isSolarTime && haveSolarVoltage && hasGridPower)
+			desired = PowerMode::Inverter;
+
+		if (desired != Mode) {
+			if (desired == PowerMode::Grid ||
+			    now - LastSwitch > CooloffSeconds) {
+				printf("Change mode to %s\n", ModeToString(desired));
+				SetMode(desired);
+				LastSwitch = now;
+			}
+		}
+
+		int millisecond = 1000;
+		usleep(100 * millisecond);
+	}
+}
+
+TimePoint Controller::Now() {
+	return TimePoint::Now(TimezoneOffsetMinutes);
 }
 
 } // namespace homepower

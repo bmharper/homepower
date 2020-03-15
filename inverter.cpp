@@ -25,7 +25,7 @@ QPIGS:
 using namespace std;
 
 // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
-const double RecvTimeout = 2;
+const double RecvTimeout = 3;
 
 uint16_t CRC(const uint8_t* pin, size_t len) {
 	uint16_t crc_ta[16] = {
@@ -149,7 +149,8 @@ nlohmann::json Interpret(string cmd, string resp) {
 		double n[1]    = {0};
 		char   s[5][40];
 		int    tok = sscanf(resp.c_str() + 1, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s",
-                         &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV, n + 0, s + 0, s + 1, s + 2, s + 3, &pvW, s + 4);
+                         &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV,
+                         n + 0, (char*) (s + 0), (char*) (s + 1), (char*) (s + 2), (char*) (s + 3), &pvW, (char*) (s + 4));
 		if (tok == 21) {
 			return nlohmann::json({
 			    {"Raw", resp},
@@ -194,13 +195,13 @@ bool Execute(string device, string cmd) {
 			if (!inter.is_null())
 				printf("%s\n", inter.dump(4).c_str());
 			else
-				printf("%s\n", resp.c_str());
+				printf("RAW: <<%s>>", resp.c_str());
 		} else {
 			size_t len = resp.size();
 			if (len > 10)
-				fprintf(stderr, "Fail: %s\nLast 10 bytes: %d %d %d %d %d %d %d %d %d %d\n", resp.c_str(), resp[len - 10], resp[len - 9], resp[len - 8], resp[len - 7], resp[len - 6], resp[len - 5], resp[len - 4], resp[len - 3], resp[len - 2], resp[len - 1]);
+				fprintf(stderr, "RecvMsg Fail: %s\nLast 10 bytes: %d %d %d %d %d %d %d %d %d %d\n", resp.c_str(), resp[len - 10], resp[len - 9], resp[len - 8], resp[len - 7], resp[len - 6], resp[len - 5], resp[len - 4], resp[len - 3], resp[len - 2], resp[len - 1]);
 			else
-				fprintf(stderr, "Fail: %s\n", resp.c_str());
+				fprintf(stderr, "RecvMsg Fail: %s\n", resp.c_str());
 		}
 	}
 

@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string>
+#include "json.hpp"
 
 /*
 
@@ -125,8 +126,8 @@ bool RecvMsg(int fd, string& msg) {
 }
 
 // Interpret a known command, and return JSON representing it.
-// Upon failure, return an empty string
-string Interpret(string cmd, string resp) {
+// Upon failure, returns null
+nlohmann::json Interpret(string cmd, string resp) {
 	if (cmd == "QPIGS") {
 		// (000.0  00.0    228.2   50.0     0346    0337   011    429   27.00  000     095   0038  01.3  248.1  00.00  00001   10010000  00  00  00336       010
 		//  AcInV  AcInHz  AcOutV  AcOutHz  LoadVA  LoadW  Load%  BusV  BatV   BatChA  Bat%  Temp  PvA   PvV                                     PvW
@@ -145,13 +146,38 @@ string Interpret(string cmd, string resp) {
 		double pvA     = 0;
 		double pvV     = 0;
 		double pvW     = 0;
-		double n[6]    = {0};
-		int    tok     = sscanf(resp.c_str() + 1, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f",
-                         &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV, n + 0, n + 1, n + 2, n + 3, n + 4, &pvW, n + 5);
+		double n[1]    = {0};
+		char   s[5][40];
+		int    tok = sscanf(resp.c_str() + 1, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s",
+                         &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV, n + 0, s + 0, s + 1, s + 2, s + 3, &pvW, s + 4);
 		if (tok == 21) {
-				}
+			return nlohmann::json({
+			    {"Raw", resp},
+			    {"ACInV", acInV},
+			    {"ACInHz", acInHz},
+			    {"ACOutV", acOutV},
+			    {"ACOutHz", acOutHz},
+			    {"LoadVA", loadVA},
+			    {"LoadW", loadW},
+			    {"LoadP", loadP},
+			    {"BusV", busV},
+			    {"BatV", batV},
+			    {"BatChA", batChA},
+			    {"BatP", batP},
+			    {"Temp", temp},
+			    {"PvA", pvA},
+			    {"PvV", pvV},
+			    {"PvW", pvW},
+			    {"Unknown1", n[0]},
+			    {"Unknown2", s[0]},
+			    {"Unknown3", s[1]},
+			    {"Unknown4", s[2]},
+			    {"Unknown5", s[3]},
+			    {"Unknown6", s[4]},
+			});
+		}
 	}
-	return "";
+	return nlohmann::json();
 }
 
 bool Execute(string device, string cmd) {
@@ -164,7 +190,11 @@ bool Execute(string device, string cmd) {
 	if (SendMsg(fd, cmd)) {
 		string resp;
 		if (RecvMsg(fd, resp)) {
-			printf("%s\n", resp.c_str());
+			auto inter = Interpret(cmd, resp);
+			if (!inter.is_null())
+				printf("%s\n", inter.dump(4).c_str());
+			else
+				printf("%s\n", resp.c_str());
 		} else {
 			size_t len = resp.size();
 			if (len > 10)

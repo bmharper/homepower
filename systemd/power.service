@@ -1,0 +1,9 @@
+[Unit]
+Description=power
+
+[Service]
+WorkingDirectory=/home/pi/build
+ExecStart=/home/pi/homepower/build/server/server
+
+[Install]
+WantedBy=multi-user.target

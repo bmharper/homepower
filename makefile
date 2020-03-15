@@ -2,7 +2,8 @@
 #CC := clang -ggdb -lpthread
 CC := clang
 #CXX := clang++ -std=c++11 -ggdb -lpthread
-CXX := clang++ -std=c++11 -lwiringPi
+CXX := clang++ -std=c++11
+LINK := clang++ -lwiringPi
 CXX_EXE_OUT := -o  
 CC_OBJ_OUT := -o  
 CXX_OBJ_OUT := -o  
@@ -19,7 +20,7 @@ print-% : ; @echo $* = $($*)
 
 INVERTER_CPP := inverter.cpp
 
-SERVER_CPP := server.cpp phttp/phttp.cpp
+SERVER_CPP := server/server.cpp server/http.cpp server/controller.cpp phttp/phttp.cpp
 SERVER_C := phttp/sha1.c phttp/http11/http11_parser.c
 
 SERVER_OBJ = $(patsubst %.cpp, $(OUT)/%$(OBJ), $(SERVER_CPP)) $(patsubst %.c, $(OUT)/%$(OBJ), $(SERVER_C))
@@ -33,8 +34,8 @@ $(OUT)/%$(OBJ): %.c
 	@mkdir -p $(@D)
 	$(CC) $(CC_OBJ_OUT)$@ -c $<
 
-$(OUT)/server$(EXE): $(SERVER_OBJ)
-	$(CXX) $(CXX_EXE_OUT)$@ $(SERVER_OBJ)
+$(OUT)/server/server$(EXE): $(SERVER_OBJ)
+	$(LINK) $(CXX_EXE_OUT)$@ $(SERVER_OBJ)
 
 $(OUT)/inverter$(EXE): $(INVERTER_OBJ)
-	$(CXX) $(CXX_EXE_OUT)$@ $(INVERTER_OBJ)
+	$(LINK) $(CXX_EXE_OUT)$@ $(INVERTER_OBJ)

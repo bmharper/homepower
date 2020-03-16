@@ -8,6 +8,7 @@ using namespace std;
 namespace homepower {
 
 Monitor::Monitor() {
+	IsInitialized     = false;
 	IsOverloaded      = false;
 	HasGridPower      = true;
 	SolarV            = 0;
@@ -18,7 +19,9 @@ Monitor::Monitor() {
 
 void Monitor::Start() {
 	Thread = thread([&]() {
+		printf("Monitor started\n");
 		Run();
+		printf("Monitor exited\n");
 	});
 }
 
@@ -80,9 +83,10 @@ bool Monitor::ReadInverter(bool saveReading) {
 	if (MakeRecord(TrimSpace(inp), r)) {
 		if (saveReading)
 			Records.push_back(r);
-		IsOverloaded = r.LoadW > (float) OverloadThresholdWatts;
-		HasGridPower = r.ACInV > (float) GridVoltageThreshold;
-		SolarV       = (int) r.PvV;
+		IsInitialized = true;
+		IsOverloaded  = r.LoadW > (float) OverloadThresholdWatts;
+		HasGridPower  = r.ACInV > (float) GridVoltageThreshold;
+		SolarV        = (int) r.PvV;
 		return true;
 	} else {
 		//printf("read: %s\n", inp.c_str());

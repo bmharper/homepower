@@ -38,7 +38,8 @@ Controller::Controller(homepower::Monitor* monitor) {
 	// I'm sure there is a way to read the state using other mechanisms, but I don't
 	// have any need for that, because this server is intended to come on and stay
 	// on for months, without a restart.
-	Monitor = monitor;
+	Monitor  = monitor;
+	MustExit = false;
 	wiringPiSetup();
 	pinMode(GpioPinGrid, OUTPUT);
 	pinMode(GpioPinInverter, OUTPUT);
@@ -50,9 +51,12 @@ Controller::Controller(homepower::Monitor* monitor) {
 }
 
 void Controller::Start() {
-	Thread = thread([&]() {
-		Run();
-	});
+	MustExit = false;
+	Thread   = thread([&]() {
+        printf("Controlled started\n");
+        Run();
+        printf("Controlled exited\n");
+    });
 }
 
 void Controller::Stop() {
@@ -63,6 +67,8 @@ void Controller::Stop() {
 void Controller::SetMode(PowerMode m, bool forceWrite) {
 	if (Mode == m && !forceWrite)
 		return;
+
+	printf("Set mode to %s\n", ModeToString(m));
 
 	timespec pause;
 	pause.tv_sec  = 0;
@@ -88,21 +94,31 @@ void Controller::SetMode(PowerMode m, bool forceWrite) {
 }
 
 void Controller::Run() {
+	auto lastStatus = 0;
 	while (!MustExit) {
 		time_t    now     = time(nullptr);
 		auto      nowP    = Now();
 		PowerMode desired = PowerMode::Grid;
 
+		bool monitorIsAlive   = Monitor->IsInitialized;
 		bool isSolarTime      = nowP > SolarOnAt && nowP < SolarOffAt;
+		int  solarV           = Monitor->SolarV;
 		bool hasGridPower     = Monitor->HasGridPower;
-		bool haveSolarVoltage = Monitor->SolarV > MinSolarVoltage;
-		if (!Monitor->IsOverloaded && isSolarTime && haveSolarVoltage && hasGridPower)
+		bool haveSolarVoltage = solarV > MinSolarVoltage;
+		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarVoltage && hasGridPower) {
 			desired = PowerMode::Inverter;
+		} else {
+			if (monitorIsAlive && time(nullptr) - lastStatus > 10 * 60) {
+				lastStatus = time(nullptr);
+				printf("isSolarTime: %s, hasGridPower: %s, haveSolarVoltage(%d): %s, IsOverloaded: %s (time %d:%02d)\n",
+				       isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarVoltage ? "yes" : "no",
+				       Monitor->IsOverloaded ? "yes" : "no",
+				       nowP.Hour, nowP.Minute);
+			}
+		}
 
 		if (desired != Mode) {
-			if (desired == PowerMode::Grid ||
-			    now - LastSwitch > CooloffSeconds) {
-				printf("Change mode to %s\n", ModeToString(desired));
+			if (desired == PowerMode::Grid || now - LastSwitch > CooloffSeconds) {
 				SetMode(desired);
 				LastSwitch = now;
 			}

@@ -16,6 +16,7 @@ public:
 	int               SecondsBetweenSamples  = 5;
 	int               OverloadThresholdWatts = 2900;
 	int               GridVoltageThreshold   = 200; // Grid voltage below this is considered "grid off"
+	std::atomic<bool> IsInitialized;                // Set to true once we've made our first successful reading
 	std::atomic<bool> IsOverloaded;                 // Signalled when inverter usage is higher than OverloadThresholdWatts
 	std::atomic<bool> HasGridPower;                 // True if the grid is on
 	std::atomic<int>  SolarV;                       // Solar voltage

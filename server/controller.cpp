@@ -102,7 +102,7 @@ void Controller::Run() {
 
 		bool monitorIsAlive   = Monitor->IsInitialized;
 		bool isSolarTime      = nowP > SolarOnAt && nowP < SolarOffAt;
-		int  solarV           = Monitor->SolarV;
+		int  solarV           = Monitor->AvgSolarV;
 		bool hasGridPower     = Monitor->HasGridPower;
 		bool haveSolarVoltage = solarV > MinSolarVoltage;
 		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarVoltage && hasGridPower) {
@@ -110,10 +110,11 @@ void Controller::Run() {
 		} else {
 			if (monitorIsAlive && time(nullptr) - lastStatus > 10 * 60) {
 				lastStatus = time(nullptr);
-				printf("isSolarTime: %s, hasGridPower: %s, haveSolarVoltage(%d): %s, IsOverloaded: %s (time %d:%02d)\n",
-				       isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarVoltage ? "yes" : "no",
-				       Monitor->IsOverloaded ? "yes" : "no",
-				       nowP.Hour, nowP.Minute);
+				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarVoltage(%d): %s, IsOverloaded: %s (time %d:%02d)\n",
+				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarVoltage ? "yes" : "no",
+				        Monitor->IsOverloaded ? "yes" : "no",
+				        nowP.Hour, nowP.Minute);
+				fflush(stderr);
 			}
 		}
 

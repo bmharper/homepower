@@ -20,6 +20,7 @@ public:
 	std::atomic<bool> IsOverloaded;                 // Signalled when inverter usage is higher than OverloadThresholdWatts
 	std::atomic<bool> HasGridPower;                 // True if the grid is on
 	std::atomic<int>  SolarV;                       // Solar voltage
+	std::atomic<int>  AvgSolarV;                    // Average Solar voltage (over last X minutes)
 	std::atomic<bool> IsHeavyOnInverter;            // Set by Controller - true when heavy loads are on the inverter
 
 	Monitor();
@@ -42,12 +43,15 @@ private:
 		bool   Heavy;
 	};
 	std::vector<Record> Records;
+	std::vector<float>  SolarVHistory;
 	std::thread         Thread;
 	std::atomic<bool>   MustExit;
-	int                 RecordNext = 0;
+	int                 AverageWindow = 10;
+	int                 RecordNext    = 0;
 
 	void Run();
 	bool ReadInverter(bool saveReading);
+	void UpdateStats(const Record& r);
 	bool MakeRecord(std::string inp, Record& r);
 	bool CommitReadings();
 };

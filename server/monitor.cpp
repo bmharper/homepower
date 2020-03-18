@@ -12,6 +12,7 @@ Monitor::Monitor() {
 	IsOverloaded      = false;
 	HasGridPower      = true;
 	SolarV            = 0;
+	AvgSolarV         = 0;
 	MustExit          = false;
 	IsHeavyOnInverter = false;
 	RecordNext        = 0; // Send one sample as soon as we come online
@@ -83,15 +84,26 @@ bool Monitor::ReadInverter(bool saveReading) {
 	if (MakeRecord(TrimSpace(inp), r)) {
 		if (saveReading)
 			Records.push_back(r);
-		IsInitialized = true;
-		IsOverloaded  = r.LoadW > (float) OverloadThresholdWatts;
-		HasGridPower  = r.ACInV > (float) GridVoltageThreshold;
-		SolarV        = (int) r.PvV;
+		UpdateStats(r);
 		return true;
 	} else {
 		//printf("read: %s\n", inp.c_str());
 		return false;
 	}
+}
+
+void Monitor::UpdateStats(const Record& r) {
+	IsInitialized = true;
+	IsOverloaded  = r.LoadW > (float) OverloadThresholdWatts;
+	HasGridPower  = r.ACInV > (float) GridVoltageThreshold;
+	SolarV        = (int) r.PvV;
+	SolarVHistory.push_back(r.PvV);
+	if (SolarVHistory.size() > AverageWindow)
+		SolarVHistory.erase(SolarVHistory.begin(), SolarVHistory.begin() + SolarVHistory.size() - (size_t) AverageWindow);
+	double solarAvg = 0;
+	for (auto v : SolarVHistory)
+		solarAvg += v;
+	AvgSolarV = (int) (solarAvg / (double) SolarVHistory.size());
 }
 
 static double GetDbl(const nlohmann::json& j, const char* key) {

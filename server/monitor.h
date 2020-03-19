@@ -46,7 +46,7 @@ private:
 	std::vector<float>  SolarVHistory;
 	std::thread         Thread;
 	std::atomic<bool>   MustExit;
-	int                 AverageWindow = 10;
+	int                 AverageWindow = 20;
 	int                 RecordNext    = 0;
 
 	void Run();

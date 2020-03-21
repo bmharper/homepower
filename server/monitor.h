@@ -14,7 +14,7 @@ public:
 
 	int               SampleWriteInterval    = 60; // Write to database once every N samples.
 	int               SecondsBetweenSamples  = 5;
-	int               OverloadThresholdWatts = 2900;
+	int               OverloadThresholdWatts = 2950;
 	int               GridVoltageThreshold   = 200; // Grid voltage below this is considered "grid off"
 	std::atomic<bool> IsInitialized;                // Set to true once we've made our first successful reading
 	std::atomic<bool> IsOverloaded;                 // Signalled when inverter usage is higher than OverloadThresholdWatts
@@ -46,7 +46,7 @@ private:
 	std::vector<float>  SolarVHistory;
 	std::thread         Thread;
 	std::atomic<bool>   MustExit;
-	int                 AverageWindow = 20;
+	int                 AverageWindow = 30;
 	int                 RecordNext    = 0;
 
 	void Run();

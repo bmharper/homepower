@@ -45,7 +45,14 @@ Controller::Controller(homepower::Monitor* monitor) {
 	pinMode(GpioPinInverter, OUTPUT);
 	digitalWrite(GpioPinGrid, 0);
 	digitalWrite(GpioPinInverter, 0);
-	Mode     = PowerMode::Off;
+	Mode = PowerMode::Off;
+
+	time_t    t  = time(NULL);
+	struct tm lt = {0};
+	localtime_r(&t, &lt);
+	TimezoneOffsetMinutes = (int) (lt.tm_gmtoff / 60);
+	printf("Offset to GMT is %d minutes\n", TimezoneOffsetMinutes);
+
 	auto now = Now();
 	printf("Time now (local): %d:%02d\n", now.Hour, now.Minute);
 }
@@ -53,9 +60,9 @@ Controller::Controller(homepower::Monitor* monitor) {
 void Controller::Start() {
 	MustExit = false;
 	Thread   = thread([&]() {
-        printf("Controlled started\n");
+        printf("Controller started\n");
         Run();
-        printf("Controlled exited\n");
+        printf("Controller exited\n");
     });
 }
 

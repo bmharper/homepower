@@ -8,14 +8,15 @@ using namespace std;
 namespace homepower {
 
 Monitor::Monitor() {
-	IsInitialized     = false;
-	IsOverloaded      = false;
-	HasGridPower      = true;
-	SolarV            = 0;
-	AvgSolarV         = 0;
-	MustExit          = false;
-	IsHeavyOnInverter = false;
-	RecordNext        = 0; // Send one sample as soon as we come online
+	IsInitialized             = false;
+	IsOverloaded              = false;
+	HasGridPower              = true;
+	SolarV                    = 0;
+	AvgSolarV                 = 0;
+	MustExit                  = false;
+	LoadTooHighForBatteryMode = true;
+	IsHeavyOnInverter         = false;
+	RecordNext                = 0; // Send one sample as soon as we come online
 }
 
 void Monitor::Start() {

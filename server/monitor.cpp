@@ -173,7 +173,7 @@ bool Monitor::CommitReadings() {
 		sql += "(";
 		sql += "to_timestamp(";
 		AddDbl(sql, r.Time, false);
-		sql += "),";
+		sql += ") AT TIME ZONE 'UTC',";
 		AddDbl(sql, r.ACInV);
 		AddDbl(sql, r.ACInHz);
 		AddDbl(sql, r.ACOutV);

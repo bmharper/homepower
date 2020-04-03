@@ -1,0 +1,7 @@
+{
+	"files.associations": {
+		"Dockerfile-*": "dockerfile",
+		"vector": "cpp",
+		"functional": "cpp"
+	}
+}

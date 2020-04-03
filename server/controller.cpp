@@ -8,11 +8,11 @@ using namespace std;
 
 namespace homepower {
 
-const char* ModeToString(PowerMode mode) {
+const char* ModeToString(HeavyLoadMode mode) {
 	switch (mode) {
-	case PowerMode::Off: return "Off";
-	case PowerMode::Grid: return "Grid";
-	case PowerMode::Inverter: return "Inverter";
+	case HeavyLoadMode::Off: return "Off";
+	case HeavyLoadMode::Grid: return "Grid";
+	case HeavyLoadMode::Inverter: return "Inverter";
 	}
 }
 
@@ -45,7 +45,7 @@ Controller::Controller(homepower::Monitor* monitor) {
 	pinMode(GpioPinInverter, OUTPUT);
 	digitalWrite(GpioPinGrid, 0);
 	digitalWrite(GpioPinInverter, 0);
-	Mode = PowerMode::Off;
+	CurrentHeavyLoadMode = HeavyLoadMode::Off;
 
 	time_t    t  = time(NULL);
 	struct tm lt = {0};
@@ -71,8 +71,8 @@ void Controller::Stop() {
 	Thread.join();
 }
 
-void Controller::SetMode(PowerMode m, bool forceWrite) {
-	if (Mode == m && !forceWrite)
+void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
+	if (CurrentHeavyLoadMode == m && !forceWrite)
 		return;
 
 	printf("Set mode to %s\n", ModeToString(m));
@@ -81,54 +81,90 @@ void Controller::SetMode(PowerMode m, bool forceWrite) {
 	pause.tv_sec  = 0;
 	pause.tv_nsec = SleepMilliseconds * 1000 * 1000;
 
-	if (m == PowerMode::Inverter) {
+	if (m == HeavyLoadMode::Inverter) {
 		digitalWrite(GpioPinGrid, 0);
 		nanosleep(&pause, nullptr);
 		digitalWrite(GpioPinInverter, 1);
 		Monitor->IsHeavyOnInverter = true;
-	} else if (m == PowerMode::Grid) {
+	} else if (m == HeavyLoadMode::Grid) {
 		digitalWrite(GpioPinInverter, 0);
 		nanosleep(&pause, nullptr);
 		digitalWrite(GpioPinGrid, 1);
 		Monitor->IsHeavyOnInverter = false;
-	} else if (m == PowerMode::Off) {
+	} else if (m == HeavyLoadMode::Off) {
 		digitalWrite(GpioPinInverter, 0);
 		digitalWrite(GpioPinGrid, 0);
 		Monitor->IsHeavyOnInverter = false;
 	}
 
-	Mode = m;
+	CurrentHeavyLoadMode = m;
 }
 
 void Controller::Run() {
-	auto lastStatus = 0;
+	auto lastStatus   = 0;
+	auto lastPVStatus = 0;
 	while (!MustExit) {
-		time_t    now     = time(nullptr);
-		auto      nowP    = Now();
-		PowerMode desired = PowerMode::Grid;
+		time_t        now           = time(nullptr);
+		auto          nowP          = Now();
+		HeavyLoadMode desiredPMode  = HeavyLoadMode::Grid;
+		PowerSource   desiredSource = PowerSource::SolarUtilityBattery;
 
-		bool monitorIsAlive   = Monitor->IsInitialized;
-		bool isSolarTime      = nowP > SolarOnAt && nowP < SolarOffAt;
-		int  solarV           = Monitor->AvgSolarV;
-		bool hasGridPower     = Monitor->HasGridPower;
-		bool haveSolarVoltage = solarV > MinSolarVoltage;
-		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarVoltage && hasGridPower) {
-			desired = PowerMode::Inverter;
+		bool monitorIsAlive    = Monitor->IsInitialized;
+		bool isSolarTime       = nowP > SolarOnAt && nowP < SolarOffAt;
+		int  solarV            = Monitor->AvgSolarV;
+		bool hasGridPower      = Monitor->HasGridPower;
+		bool haveSolarHeavyV   = solarV > MinSolarHeavyV;
+		bool haveBatterySolarV = solarV > MinSolarBatterySourceV;
+		bool loadIsLow         = Monitor->MaxLoadW < MaxLoadBatteryModeW;
+		bool pvTooWeak         = Monitor->PVIsTooWeakForLoads;
+		bool batteryGoodForSBU = Monitor->BatteryV >= MinBatteryV_SBU;
+		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarHeavyV && hasGridPower) {
+			desiredPMode = HeavyLoadMode::Inverter;
 		} else {
 			if (monitorIsAlive && time(nullptr) - lastStatus > 10 * 60) {
 				lastStatus = time(nullptr);
-				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarVoltage(%d): %s, IsOverloaded: %s (time %d:%02d)\n",
-				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarVoltage ? "yes" : "no",
+				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, IsOverloaded: %s (time %d:%02d)\n",
+				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarHeavyV ? "yes" : "no",
 				        Monitor->IsOverloaded ? "yes" : "no",
 				        nowP.Hour, nowP.Minute);
 				fflush(stderr);
 			}
 		}
 
-		if (desired != Mode) {
-			if (desired == PowerMode::Grid || now - LastSwitch > CooloffSeconds) {
-				SetMode(desired);
-				LastSwitch = now;
+		if (isSolarTime && hasGridPower && haveBatterySolarV && loadIsLow && !pvTooWeak && batteryGoodForSBU) {
+			desiredSource = PowerSource::SolarBatteryUtility;
+		} else {
+			if (time(nullptr) - lastPVStatus > 10 * 60) {
+				lastPVStatus = time(nullptr);
+				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, pvTooWeak: %s, batteryGoodForSBU: %s\n",
+				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", pvTooWeak ? "yes" : "no", batteryGoodForSBU ? "yes" : "no");
+			}
+		}
+
+		if (desiredSource != CurrentPowerSource && (now - LastSourceSwitch > CooloffSeconds || desiredSource == PowerSource::SolarUtilityBattery)) {
+			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
+			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
+				if (CurrentPowerSource == PowerSource::SolarBatteryUtility && desiredSource == PowerSource::SolarUtilityBattery) {
+					// When switching from Battery to Utility, give 1 second to adjust to the grid phase, in case
+					// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA
+					// whether this is necessary, or if 1 second is long enough, or whether the VM III even loses
+					// phase lock with the grid when in SBU mode. From my measurements of ACinHz vs ACoutHz, I'm
+					// guesing that the VM III does indeed keep it's phase close to the grid, even when in SBU mode.
+					fprintf(stderr, "Pausing for 1 second, after switching back to grid\n");
+					sleep(1);
+				}
+				CurrentPowerSource          = desiredSource;
+				Monitor->CurrentPowerSource = CurrentPowerSource;
+				LastSourceSwitch            = now;
+			} else {
+				fprintf(stderr, "Switching inverter mode failed\n");
+			}
+		}
+
+		if (desiredPMode != CurrentHeavyLoadMode) {
+			if (desiredPMode == HeavyLoadMode::Grid || now - LastHeavySwitch > CooloffSeconds) {
+				SetHeavyLoadMode(desiredPMode);
+				LastHeavySwitch = now;
 			}
 		}
 

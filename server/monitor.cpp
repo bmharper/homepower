@@ -7,15 +7,52 @@ using namespace std;
 
 namespace homepower {
 
+// Add a sample to a history of samples, chopping off the oldest samples, if the size exceeds maxHistorySize
+template <typename T>
+void AddToHistory(size_t maxHistorySize, vector<T>& history, T sample) {
+	history.push_back(sample);
+	if (history.size() > maxHistorySize)
+		history.erase(history.begin(), history.begin() + history.size() - (size_t) maxHistorySize);
+}
+
+template <typename T>
+double Average(const vector<T>& history) {
+	double sum = 0;
+	for (auto v : history)
+		sum += (double) v;
+	return sum / (double) history.size();
+}
+
+template <typename T>
+double Maximum(const vector<T>& history) {
+	double maximum = -9e99;
+	for (auto v : history)
+		maximum = v > maximum ? v : maximum;
+	return maximum;
+}
+
+// trim space from end
+static string TrimSpace(const string& s) {
+	string x = s;
+	while (x.size() != 0 && (x[x.size() - 1] == '\n' || x[x.size() - 1] == ' ' || x[x.size() - 1] == '\t')) {
+		x.erase(x.end() - 1, x.end());
+	}
+	return x;
+}
+
 Monitor::Monitor() {
 	IsInitialized             = false;
 	IsOverloaded              = false;
 	HasGridPower              = true;
 	SolarV                    = 0;
 	AvgSolarV                 = 0;
+	MaxLoadW                  = OverloadThresholdWatts - 1;
 	MustExit                  = false;
 	LoadTooHighForBatteryMode = true;
 	IsHeavyOnInverter         = false;
+	PVIsTooWeakForLoads       = true;
+	CurrentPowerSource        = PowerSource::Unknown;
+	BatteryV                  = 0;
 	RecordNext                = 0; // Send one sample as soon as we come online
 }
 
@@ -32,11 +69,51 @@ void Monitor::Stop() {
 	Thread.join();
 }
 
+int Monitor::RunInverterQuery(std::string cmd, std::string& stdout) {
+	lock_guard<mutex> lock(InverterLock);
+	string            fullCmd = InverterPath + " /dev/hidraw0 " + cmd;
+	auto              fd      = popen(fullCmd.c_str(), "r");
+	if (!fd) {
+		printf("Failed to launch inverter command (%s): %d\n", fullCmd.c_str(), errno);
+		return 1;
+	}
+	int    start = time(nullptr);
+	string inp;
+	while (time(nullptr) - start < 3) {
+		char buf[3000];
+		int  n = fread(buf, 1, sizeof(buf) - 1, fd);
+		if (n > 0) {
+			inp.append(buf, n);
+			auto trimmed = TrimSpace(inp);
+			if (trimmed.size() > 5 && trimmed[trimmed.size() - 1] == '}') {
+				// JSON output (for query commands)
+				break;
+			}
+			if (trimmed == "OK") {
+				// Change state commands (eg POP01)
+				break;
+			}
+		}
+	}
+	stdout = TrimSpace(inp);
+	return pclose(fd);
+}
+
+bool Monitor::RunInverterCmd(std::string cmd) {
+	string out;
+	int    res = RunInverterQuery(cmd, out);
+	if (res != 0 || out != "OK") {
+		fprintf(stderr, "Command '%s' failed with %d, '%s'\n", cmd.c_str(), res, out.c_str());
+		return false;
+	}
+	return true;
+}
+
 void Monitor::Run() {
 	auto lastSaveTime = 0;
 	while (!MustExit) {
 		bool saveReading = time(nullptr) - lastSaveTime > SecondsBetweenSamples;
-		bool readOK      = ReadInverter(saveReading);
+		bool readOK      = ReadInverterStats(saveReading);
 		if (readOK && saveReading) {
 			lastSaveTime = time(nullptr);
 		}
@@ -51,38 +128,16 @@ void Monitor::Run() {
 	};
 }
 
-// trim space from end
-static string TrimSpace(const string& s) {
-	string x = s;
-	while (x.size() != 0 && (x[x.size() - 1] == '\n' || x[x.size() - 1] == ' ' || x[x.size() - 1] == '\t')) {
-		x.erase(x.end() - 1, x.end());
-	}
-	return x;
-}
-
-bool Monitor::ReadInverter(bool saveReading) {
-	string cmd = InverterPath + " /dev/hidraw0 QPIGS";
-	auto   fd  = popen(cmd.c_str(), "r");
-	if (!fd) {
-		printf("Failed to call inverter: %d\n", errno);
+bool Monitor::ReadInverterStats(bool saveReading) {
+	string out;
+	int    res = RunInverterQuery("QPIGS", out);
+	if (res != 0) {
+		fprintf(stderr, "Failed to run inverter query. Exit code = %d\n", res);
 		return false;
 	}
-	int    start = time(nullptr);
-	string inp;
-	while (time(nullptr) - start < 3) {
-		char buf[3000];
-		int  n = fread(buf, 1, sizeof(buf) - 1, fd);
-		if (n > 0) {
-			inp.append(buf, n);
-			auto trimmed = TrimSpace(inp);
-			if (trimmed.size() > 5 && trimmed[trimmed.size() - 1] == '}')
-				break;
-		}
-	}
-	pclose(fd);
 	Record r;
 	r.Heavy = IsHeavyOnInverter;
-	if (MakeRecord(TrimSpace(inp), r)) {
+	if (MakeRecord(TrimSpace(out), r)) {
 		if (saveReading)
 			Records.push_back(r);
 		UpdateStats(r);
@@ -98,13 +153,89 @@ void Monitor::UpdateStats(const Record& r) {
 	IsOverloaded  = r.LoadW > (float) OverloadThresholdWatts;
 	HasGridPower  = r.ACInV > (float) GridVoltageThreshold;
 	SolarV        = (int) r.PvV;
-	SolarVHistory.push_back(r.PvV);
-	if (SolarVHistory.size() > AverageWindow)
-		SolarVHistory.erase(SolarVHistory.begin(), SolarVHistory.begin() + SolarVHistory.size() - (size_t) AverageWindow);
-	double solarAvg = 0;
-	for (auto v : SolarVHistory)
-		solarAvg += v;
-	AvgSolarV = (int) (solarAvg / (double) SolarVHistory.size());
+	BatteryV      = r.BatV;
+
+	AddToHistory(SolarVHistorySize, SolarVHistory, r.PvV);
+	AvgSolarV = Average(SolarVHistory);
+
+	AddToHistory(BatteryModeHistorySize, LoadWHistory, r.LoadW);
+	AddToHistory(BatteryModeHistorySize, PvWHistory, r.PvW);
+	MaxLoadW = (int) Maximum(LoadWHistory);
+
+	ComputePVStrength();
+}
+
+// What we're looking for here, is a situation where the PvW is consistently
+// lower than the LoadW. However, some caveats apply. In particular, if the LoadW
+// is lower than about 300W, then the PvW will often be very low (eg 20 W).
+// I don't know why this is, but we need to account for it. So basically
+// what we're looking for here is a situation where we're drawing at least
+// 300W, and the PvW is substantially lower than the load.
+// The above comments apply when the system is in SUB mode.
+// However, when we're in SBU mode, then the readings seem to be more accurate,
+// and the PvW tracks the LoadW much better. So when we're in SBU mode, then
+// we trust the numbers more, and we reduce the thresholds.
+void Monitor::ComputePVStrength() {
+	int  minValidSamples = 10;
+	bool debug           = false;
+	if (AvgSolarV == 0) {
+		if (debug)
+			fprintf(stderr, "AvgSolarV = 0\n");
+		PVIsTooWeakForLoads = true;
+		return;
+	}
+	if (LoadWHistory.size() < (int) minValidSamples) {
+		// not enough information
+		if (debug)
+			fprintf(stderr, "Only %d samples in LoadWHistory\n", (int) LoadWHistory.size());
+		return;
+	}
+	if (LoadWHistory.size() != PvWHistory.size()) {
+		fprintf(stderr, "Expected LoadWHistory to be same size as PvWHistory\n");
+		return;
+	}
+	int nValid   = 0;
+	int nTooWeak = 0;
+	for (size_t i = LoadWHistory.size() - 1; i != -1 && nValid < minValidSamples; i--) {
+		if (PvWHistory[i] == 0) {
+			// zero PvW is a definite signal that we're not producing anything
+			nTooWeak++;
+			nValid++;
+		} else {
+			if (CurrentPowerSource == PowerSource::SolarBatteryUtility) {
+				// In this case, our readings are accurate, and if the PvW is less than the LoadW,
+				// then we're not meeting our needs.
+				if (LoadWHistory[i] - PvWHistory[i] > 100)
+					nTooWeak++;
+				nValid++;
+			} else {
+				// In this case, our readings are inaccurate, and the system often seems to generate
+				// less PvW than is needed.
+				if (LoadWHistory[i] < 200) {
+					// Below 200, we definitely can't see much
+					nValid++;
+				} else if (LoadWHistory[i] > 300) {
+					if (LoadWHistory[i] - PvWHistory[i] > 100)
+						nTooWeak++;
+					nValid++;
+				}
+			}
+		}
+	}
+	if (nValid < minValidSamples) {
+		// not enough information
+		if (debug)
+			fprintf(stderr, "Only %d valid samples in load history (need at least %d)\n", nValid, minValidSamples);
+		return;
+	}
+	double pTooWeak  = (double) nTooWeak / (double) nValid;
+	bool   isTooWeak = pTooWeak > 0.5;
+	if (isTooWeak != PVIsTooWeakForLoads) {
+		fprintf(stderr, "Changing PVIsTooWeakForLoads to %s. nTooWeak: %d, nValid: %d\n", isTooWeak ? "true" : "false", nTooWeak, nValid);
+	}
+	if (debug)
+		fprintf(stderr, "isTooWeak: %s, nTooWeak: %d, nValid: %d\n", isTooWeak ? "true" : "false", nTooWeak, nValid);
+	PVIsTooWeakForLoads = isTooWeak;
 }
 
 static double GetDbl(const nlohmann::json& j, const char* key) {

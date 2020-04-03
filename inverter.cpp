@@ -27,6 +27,16 @@ using namespace std;
 // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
 const double RecvTimeout = 3;
 
+// These are the process exit codes
+enum class Response {
+	OK             = 0,
+	InvalidCommand = 1,
+	FailOpenFile   = 2,
+	FailRecv       = 3,
+	FailWriteFile  = 4,
+	DontUnderstand = 5,
+};
+
 uint16_t CRC(const uint8_t* pin, size_t len) {
 	uint16_t crc_ta[16] = {
 	    0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
@@ -181,47 +191,59 @@ nlohmann::json Interpret(string cmd, string resp) {
 	return nlohmann::json();
 }
 
-bool Execute(string device, string cmd) {
+Response Execute(string device, string cmd) {
 	int fd = open(device.c_str(), O_RDWR | O_NONBLOCK);
 	if (fd == -1) {
 		fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", device.c_str(), errno, strerror(errno));
-		return false;
+		return Response::FailOpenFile;
 	}
 
+	auto res = Response::FailRecv;
 	if (SendMsg(fd, cmd)) {
 		string resp;
 		if (RecvMsg(fd, resp)) {
 			auto inter = Interpret(cmd, resp);
-			if (!inter.is_null())
+			if (!inter.is_null()) {
+				// Dump the JSON to stdout
+				res = Response::OK;
 				printf("%s\n", inter.dump(4).c_str());
-			else
-				printf("RAW: <<%s>>", resp.c_str());
+			} else if (resp == "(ACK") {
+				// In this case, we produce no output, but the caller can tell by our exit code that the command succeeded
+				// Write a single byte, so that the caller (who is using popen), can detect that we are finished
+				printf("OK");
+				res = Response::OK;
+			} else {
+				res = Response::DontUnderstand;
+				fprintf(stderr, "RAW: <<%s>>", resp.c_str());
+			}
 		} else {
+			res        = Response::FailRecv;
 			size_t len = resp.size();
 			if (len > 10)
 				fprintf(stderr, "RecvMsg Fail: %s\nLast 10 bytes: %d %d %d %d %d %d %d %d %d %d\n", resp.c_str(), resp[len - 10], resp[len - 9], resp[len - 8], resp[len - 7], resp[len - 6], resp[len - 5], resp[len - 4], resp[len - 3], resp[len - 2], resp[len - 1]);
 			else
 				fprintf(stderr, "RecvMsg Fail: %s\n", resp.c_str());
 		}
+	} else {
+		res = Response::FailWriteFile;
 	}
 
 	close(fd);
-	return true;
+	return res;
 }
 
 void ShowHelp() {
-	printf("inverter <device> <cmd>\n");
-	printf("  example device = /dev/hidraw0\n");
-	printf("  example cmd    = QPIGS\n");
+	fprintf(stderr, "inverter <device> <cmd>\n");
+	fprintf(stderr, "  example device = /dev/hidraw0\n");
+	fprintf(stderr, "  example cmd    = QPIGS\n");
 }
 
 int main(int argc, char** argv) {
 	if (argc < 3) {
 		ShowHelp();
-		return 1;
+		return (int) Response::InvalidCommand;
 	}
 	string device = argv[1];
 	string cmd    = argv[2];
-	Execute(device, cmd);
-	return 0;
+	return (int) Execute(device, cmd);
 }

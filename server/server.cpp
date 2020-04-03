@@ -6,7 +6,7 @@ int main(int argc, char** argv) {
 	homepower::Monitor    monitor;
 	homepower::Controller controller(&monitor);
 	monitor.Start();
-	controller.SetMode(homepower::PowerMode::Grid);
+	controller.SetHeavyLoadMode(homepower::HeavyLoadMode::Grid);
 	controller.Start();
 	bool ok = homepower::RunHttpServer(controller);
 	controller.Stop();

@@ -26,8 +26,7 @@ public:
 	std::atomic<int>   AvgSolarV;                     // Average Solar voltage (over last X minutes)
 	std::atomic<int>   MaxLoadW;                      // Max load watts in last X window
 	std::atomic<float> BatteryV;                      // Battery voltage
-	std::atomic<bool>  LoadTooHighForBatteryMode;     // Reflects the historic power draw, and it's relation to BatteryModeThresholdWatts
-	std::atomic<bool>  PVIsTooWeakForLoads;           // Set true if we're very sure that the PV is not capable of powering the current load
+	//std::atomic<bool>  PVIsTooWeakForLoads;           // Set true if we're very sure that the PV is not capable of powering the current load
 
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
 	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller
@@ -67,12 +66,12 @@ private:
 	std::atomic<bool>   MustExit;
 	int                 RecordNext             = 0;
 	int                 SolarVHistorySize      = 30;
-	int                 BatteryModeHistorySize = 60 * 5;
+	int                 BatteryModeHistorySize = 60;
 
 	void Run();
 	bool ReadInverterStats(bool saveReading);
 	void UpdateStats(const Record& r);
-	void ComputePVStrength();
+	//void ComputePVStrength();
 	bool MakeRecord(std::string inp, Record& r);
 	bool CommitReadings();
 };

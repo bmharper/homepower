@@ -41,19 +41,18 @@ static string TrimSpace(const string& s) {
 }
 
 Monitor::Monitor() {
-	IsInitialized             = false;
-	IsOverloaded              = false;
-	HasGridPower              = true;
-	SolarV                    = 0;
-	AvgSolarV                 = 0;
-	MaxLoadW                  = OverloadThresholdWatts - 1;
-	MustExit                  = false;
-	LoadTooHighForBatteryMode = true;
-	IsHeavyOnInverter         = false;
-	PVIsTooWeakForLoads       = true;
-	CurrentPowerSource        = PowerSource::Unknown;
-	BatteryV                  = 0;
-	RecordNext                = 0; // Send one sample as soon as we come online
+	IsInitialized     = false;
+	IsOverloaded      = false;
+	HasGridPower      = true;
+	SolarV            = 0;
+	AvgSolarV         = 0;
+	MaxLoadW          = OverloadThresholdWatts - 1;
+	MustExit          = false;
+	IsHeavyOnInverter = false;
+	//PVIsTooWeakForLoads       = true;
+	CurrentPowerSource = PowerSource::Unknown;
+	BatteryV           = 0;
+	RecordNext         = 0; // Send one sample as soon as we come online
 }
 
 void Monitor::Start() {
@@ -162,7 +161,7 @@ void Monitor::UpdateStats(const Record& r) {
 	AddToHistory(BatteryModeHistorySize, PvWHistory, r.PvW);
 	MaxLoadW = (int) Maximum(LoadWHistory);
 
-	ComputePVStrength();
+	//ComputePVStrength();
 }
 
 // What we're looking for here, is a situation where the PvW is consistently
@@ -175,6 +174,8 @@ void Monitor::UpdateStats(const Record& r) {
 // However, when we're in SBU mode, then the readings seem to be more accurate,
 // and the PvW tracks the LoadW much better. So when we're in SBU mode, then
 // we trust the numbers more, and we reduce the thresholds.
+// SCREW IT -- this doesn't work reliably.
+/*
 void Monitor::ComputePVStrength() {
 	int  minValidSamples = 10;
 	bool debug           = false;
@@ -237,6 +238,7 @@ void Monitor::ComputePVStrength() {
 		fprintf(stderr, "isTooWeak: %s, nTooWeak: %d, nValid: %d\n", isTooWeak ? "true" : "false", nTooWeak, nValid);
 	PVIsTooWeakForLoads = isTooWeak;
 }
+*/
 
 static double GetDbl(const nlohmann::json& j, const char* key) {
 	if (j.find(key) == j.end())

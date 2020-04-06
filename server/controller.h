@@ -38,8 +38,8 @@ public:
 	int       SleepMilliseconds      = 20;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time.
 	int       TimezoneOffsetMinutes  = 120;              // 120 = UTC+2 (Overridden by constructor)
 	int       MinSolarHeavyV         = 160;              // Minimum solar voltage before we'll put heavy loads on it
-	int       MinSolarBatterySourceV = 180;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
-	int       MaxLoadBatteryModeW    = 1800;             // Maximum load for "SBU" mode
+	int       MinSolarBatterySourceV = 190;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
+	int       MaxLoadBatteryModeW    = 400;              // Maximum load for "SBU" mode
 	float     MinBatteryV_SBU        = 25.5f;            // Minimum battery voltage for "SBU" mode
 	TimePoint SolarOnAt              = TimePoint(7, 0);  // Ignore any solar voltage before this time
 	TimePoint SolarOffAt             = TimePoint(18, 0); // Ignore any solar voltage after this time
@@ -57,8 +57,8 @@ private:
 	PowerSource       CurrentPowerSource   = PowerSource::Unknown;
 	time_t            LastHeavySwitch      = 0;
 	time_t            LastSourceSwitch     = 0;
-	time_t            HeavyCooloffSeconds  = 60;     // Don't switch heavy load modes more often than this, unless it's urgent (eg need to switch off heavy loads, or stop using battery)
-	time_t            SourceCooloffSeconds = 5 * 60; // Don't switch SBU/SUB more often than this, unless it's urgent
+	time_t            HeavyCooloffSeconds  = 60;      // Don't switch heavy load modes more often than this, unless it's urgent (eg need to switch off heavy loads, or stop using battery)
+	time_t            SourceCooloffSeconds = 30 * 60; // Don't switch SBU/SUB more often than this, unless it's urgent
 
 	void      Run();
 	TimePoint Now();

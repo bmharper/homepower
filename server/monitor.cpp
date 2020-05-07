@@ -60,8 +60,8 @@ Monitor::Monitor() {
 	// here we're going from 'server' to 'inverter'
 	auto myPath    = ProcessPath();
 	auto suffixPos = myPath.rfind("/server/server");
-	if (suffixPos == myPath.size() - 13) {
-		InverterPath = myPath.substr(0, myPath.size() - 13) + "/inverter";
+	if (suffixPos == myPath.size() - 14) {
+		InverterPath = myPath.substr(0, myPath.size() - 14) + "/inverter";
 	}
 }
 

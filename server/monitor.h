@@ -13,6 +13,7 @@ namespace homepower {
 
 class Monitor {
 public:
+	// This is altered in the constructor, to try and find it relative to the current binary
 	std::string InverterPath = "/home/pi/homepower/build/inverter";
 
 	int                SampleWriteInterval    = 20;   // Write to database once every N samples.
@@ -72,8 +73,9 @@ private:
 	bool ReadInverterStats(bool saveReading);
 	void UpdateStats(const Record& r);
 	//void ComputePVStrength();
-	bool MakeRecord(std::string inp, Record& r);
-	bool CommitReadings();
+	bool        MakeRecord(std::string inp, Record& r);
+	bool        CommitReadings();
+	std::string ProcessPath();
 };
 
 } // namespace homepower

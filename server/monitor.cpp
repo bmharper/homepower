@@ -53,6 +53,16 @@ Monitor::Monitor() {
 	CurrentPowerSource = PowerSource::Unknown;
 	BatteryV           = 0;
 	RecordNext         = 0; // Send one sample as soon as we come online
+
+	// assume:
+	// .../homepower/build/server/server
+	// .../homepower/build/inverter
+	// here we're going from 'server' to 'inverter'
+	auto myPath    = ProcessPath();
+	auto suffixPos = myPath.rfind("/server/server");
+	if (suffixPos == myPath.size() - 13) {
+		InverterPath = myPath.substr(0, myPath.size() - 13) + "/inverter";
+	}
 }
 
 void Monitor::Start() {
@@ -325,6 +335,20 @@ bool Monitor::CommitReadings() {
 	//printf("Send:\n%s\n", sql.c_str());
 	string cmd = "PGPASSWORD=homepower psql --host localhost --username pi --dbname power --command \"" + sql + "\"";
 	return system(cmd.c_str()) == 0;
+}
+
+std::string Monitor::ProcessPath() {
+	char buf[2048];
+	buf[0] = 0;
+	int r  = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+	if (r < 0)
+		return buf;
+
+	if (r < sizeof(buf))
+		buf[r] = 0;
+	else
+		buf[sizeof(buf) - 1] = 0;
+	return buf;
 }
 
 } // namespace homepower

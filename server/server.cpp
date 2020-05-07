@@ -2,6 +2,7 @@
 #include "string.h"
 #include "monitor.h"
 #include "http.h"
+#include <unistd.h>
 
 int main(int argc, char** argv) {
 	bool runController = true;
@@ -22,6 +23,11 @@ int main(int argc, char** argv) {
 		controller.Start();
 		ok = homepower::RunHttpServer(controller);
 		controller.Stop();
+	} else {
+		// should ideally listen for SIGHUP or something
+		while (true) {
+			sleep(10);
+		}
 	}
 	monitor.Stop();
 	return ok ? 0 : 1;

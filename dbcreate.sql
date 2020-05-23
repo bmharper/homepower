@@ -16,5 +16,6 @@ CREATE TABLE readings (
 	pvA REAL,
 	pvV REAL,
 	pvW REAL,
+	unknown1 REAL,
 	heavy BOOLEAN
 );

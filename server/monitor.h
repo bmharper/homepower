@@ -50,12 +50,17 @@ private:
 		float  ACInHz;
 		float  ACOutV;
 		float  ACOutHz;
+		float  LoadVA;
 		float  LoadW;
+		float  LoadP;
+		float  BatP;
 		float  BatChA;
 		float  BatV;
 		float  Temp;
+		float  PvA;
 		float  PvV;
 		float  PvW;
+		float  Unknown1; // Similar to PvW on Bernie's inverter
 		bool   Heavy;
 	};
 	std::mutex          InverterLock; // This is held whenever talking to the inverter

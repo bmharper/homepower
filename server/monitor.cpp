@@ -257,20 +257,25 @@ static double GetDbl(const nlohmann::json& j, const char* key) {
 }
 
 bool Monitor::MakeRecord(std::string inp, Record& r) {
-	//printf("inverter output: [%s]\n", inp.c_str());
+	printf("inverter output: [%s]\n", inp.c_str());
 	try {
-		auto j    = nlohmann::json::parse(inp);
-		r.Time    = time(nullptr);
-		r.ACInV   = GetDbl(j, "ACInV");
-		r.ACInHz  = GetDbl(j, "ACInHz");
-		r.ACOutV  = GetDbl(j, "ACOutV");
-		r.ACOutHz = GetDbl(j, "ACOutHz");
-		r.LoadW   = GetDbl(j, "LoadW");
-		r.BatChA  = GetDbl(j, "BatChA");
-		r.BatV    = GetDbl(j, "BatV");
-		r.Temp    = GetDbl(j, "Temp");
-		r.PvV     = GetDbl(j, "PvV");
-		r.PvW     = GetDbl(j, "PvW");
+		auto j     = nlohmann::json::parse(inp);
+		r.Time     = time(nullptr);
+		r.ACInV    = GetDbl(j, "ACInV");
+		r.ACInHz   = GetDbl(j, "ACInHz");
+		r.ACOutV   = GetDbl(j, "ACOutV");
+		r.ACOutHz  = GetDbl(j, "ACOutHz");
+		r.LoadW    = GetDbl(j, "LoadW");
+		r.LoadVA   = GetDbl(j, "LoadVA");
+		r.LoadP    = GetDbl(j, "LoadP");
+		r.BatChA   = GetDbl(j, "BatChA");
+		r.BatV     = GetDbl(j, "BatV");
+		r.BatP     = GetDbl(j, "BatP");
+		r.Temp     = GetDbl(j, "Temp");
+		r.PvV      = GetDbl(j, "PvV");
+		r.PvA      = GetDbl(j, "PvA");
+		r.PvW      = GetDbl(j, "PvW");
+		r.Unknown1 = GetDbl(j, "Unknown1");
 		return true;
 	} catch (nlohmann::json::exception& e) {
 		printf("Failed to decode JSON record [%s]\n", inp.c_str());
@@ -304,11 +309,16 @@ bool Monitor::CommitReadings() {
 	sql += "acOutV,";
 	sql += "acOutHz,";
 	sql += "loadW,";
+	sql += "loadVA,";
+	sql += "loadP,";
 	sql += "batChA,";
 	sql += "batV,";
+	sql += "batP,";
 	sql += "temp,";
 	sql += "pvV,";
+	sql += "pvA,";
 	sql += "pvW,";
+	sql += "unknown1,";
 	sql += "heavy";
 	sql += ") VALUES ";
 	for (size_t i = 0; i < Records.size(); i++) {
@@ -322,11 +332,16 @@ bool Monitor::CommitReadings() {
 		AddDbl(sql, r.ACOutV);
 		AddDbl(sql, r.ACOutHz);
 		AddDbl(sql, r.LoadW);
+		AddDbl(sql, r.LoadVA);
+		AddDbl(sql, r.LoadP);
 		AddDbl(sql, r.BatChA);
 		AddDbl(sql, r.BatV);
+		AddDbl(sql, r.BatP);
 		AddDbl(sql, r.Temp);
 		AddDbl(sql, r.PvV);
+		AddDbl(sql, r.PvA);
 		AddDbl(sql, r.PvW);
+		AddDbl(sql, r.Unknown1);
 		AddBool(sql, r.Heavy, false);
 		sql += ")";
 		if (i != Records.size() - 1)

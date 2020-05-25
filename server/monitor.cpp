@@ -257,7 +257,7 @@ static double GetDbl(const nlohmann::json& j, const char* key) {
 }
 
 bool Monitor::MakeRecord(std::string inp, Record& r) {
-	printf("inverter output: [%s]\n", inp.c_str());
+	//printf("inverter output: [%s]\n", inp.c_str());
 	try {
 		auto j     = nlohmann::json::parse(inp);
 		r.Time     = time(nullptr);

@@ -172,7 +172,8 @@ void Controller::Run() {
 			if (desiredPMode == HeavyLoadMode::Grid || now - LastHeavySwitch > HeavyCooloffSeconds) {
 				if (desiredPMode == HeavyLoadMode::Grid) {
 					// Double the cooloff period, up to a maximum of 15 minutes
-					HeavyCooloffSeconds = std::min(15 * 60, HeavyCooloffSeconds * 2);
+					HeavyCooloffSeconds = std::min((time_t) 15 * 60, HeavyCooloffSeconds * 2);
+					fprintf(stderr, "Heavy switch cooloff doubled to %d seconds\n", (int) HeavyCooloffSeconds);
 				}
 				SetHeavyLoadMode(desiredPMode);
 				LastHeavySwitch = now;
@@ -182,6 +183,7 @@ void Controller::Run() {
 		if (CurrentHeavyLoadMode == HeavyLoadMode::Inverter && now - LastHeavySwitch > HeavyCooloffSeconds * 2) {
 			// We've been running on inverter for 2x the cool-off period, so assume it's safe to stay on inverter now.
 			HeavyCooloffSeconds = HeavyCooloffSecondsDefault;
+			fprintf(stderr, "Heavy switch cooloff reset to %d seconds\n", (int) HeavyCooloffSeconds);
 		}
 
 		int millisecond = 1000;

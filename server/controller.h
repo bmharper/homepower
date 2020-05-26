@@ -52,13 +52,14 @@ public:
 private:
 	std::thread       Thread;
 	std::atomic<bool> MustExit;
-	Monitor*          Monitor              = nullptr;
-	HeavyLoadMode     CurrentHeavyLoadMode = HeavyLoadMode::Off;
-	PowerSource       CurrentPowerSource   = PowerSource::Unknown;
-	time_t            LastHeavySwitch      = 0;
-	time_t            LastSourceSwitch     = 0;
-	time_t            HeavyCooloffSeconds  = 60;      // Don't switch heavy load modes more often than this, unless it's urgent (eg need to switch off heavy loads, or stop using battery)
-	time_t            SourceCooloffSeconds = 30 * 60; // Don't switch SBU/SUB more often than this, unless it's urgent
+	Monitor*          Monitor                    = nullptr;
+	HeavyLoadMode     CurrentHeavyLoadMode       = HeavyLoadMode::Off;
+	PowerSource       CurrentPowerSource         = PowerSource::Unknown;
+	time_t            LastHeavySwitch            = 0;
+	time_t            LastSourceSwitch           = 0;
+	time_t            HeavyCooloffSecondsDefault = 60;      // Don't switch heavy load modes more often than this, unless it's urgent (eg need to switch off heavy loads, or stop using battery)
+	time_t            HeavyCooloffSeconds        = 60;      // Starts at HeavyCooloffSecondsDefault, and doubles every time we switch back to grid.
+	time_t            SourceCooloffSeconds       = 30 * 60; // Don't switch SBU/SUB more often than this, unless it's urgent
 
 	void      Run();
 	TimePoint Now();

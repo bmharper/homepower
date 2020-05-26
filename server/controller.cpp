@@ -46,6 +46,7 @@ Controller::Controller(homepower::Monitor* monitor) {
 	digitalWrite(GpioPinGrid, 0);
 	digitalWrite(GpioPinInverter, 0);
 	CurrentHeavyLoadMode = HeavyLoadMode::Off;
+	HeavyCooloffSeconds  = HeavyCooloffSecondsDefault;
 
 	time_t    t  = time(NULL);
 	struct tm lt = {0};
@@ -169,9 +170,18 @@ void Controller::Run() {
 
 		if (desiredPMode != CurrentHeavyLoadMode) {
 			if (desiredPMode == HeavyLoadMode::Grid || now - LastHeavySwitch > HeavyCooloffSeconds) {
+				if (desiredPMode == HeavyLoadMode::Grid) {
+					// Double the cooloff period, up to a maximum of 15 minutes
+					HeavyCooloffSeconds = std::min(15 * 60, HeavyCooloffSeconds * 2);
+				}
 				SetHeavyLoadMode(desiredPMode);
 				LastHeavySwitch = now;
 			}
+		}
+
+		if (CurrentHeavyLoadMode == HeavyLoadMode::Inverter && now - LastHeavySwitch > HeavyCooloffSeconds * 2) {
+			// We've been running on inverter for 2x the cool-off period, so assume it's safe to stay on inverter now.
+			HeavyCooloffSeconds = HeavyCooloffSecondsDefault;
 		}
 
 		int millisecond = 1000;

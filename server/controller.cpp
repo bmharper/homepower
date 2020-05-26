@@ -155,7 +155,7 @@ void Controller::Run() {
 					// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA
 					// whether this is necessary, or if 1 second is long enough, or whether the VM III even loses
 					// phase lock with the grid when in SBU mode. From my measurements of ACinHz vs ACoutHz, I'm
-					// guesing that the VM III does indeed keep it's phase close to the grid, even when in SBU mode.
+					// guessing that the VM III does indeed keep it's phase close to the grid, even when in SBU mode.
 					fprintf(stderr, "Pausing for 1 second, after switching back to grid\n");
 					sleep(1);
 				}
@@ -180,7 +180,9 @@ void Controller::Run() {
 			}
 		}
 
-		if (CurrentHeavyLoadMode == HeavyLoadMode::Inverter && now - LastHeavySwitch > HeavyCooloffSeconds * 2) {
+		if (CurrentHeavyLoadMode == HeavyLoadMode::Inverter &&
+		    now - LastHeavySwitch > HeavyCooloffSeconds * 2 &&
+		    HeavyCooloffSeconds != HeavyCooloffSecondsDefault) {
 			// We've been running on inverter for 2x the cool-off period, so assume it's safe to stay on inverter now.
 			HeavyCooloffSeconds = HeavyCooloffSecondsDefault;
 			fprintf(stderr, "Heavy switch cooloff reset to %d seconds\n", (int) HeavyCooloffSeconds);

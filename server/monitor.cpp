@@ -20,7 +20,7 @@ double Average(const vector<T>& history, unsigned maxSamples = -1) {
 	double   sum      = 0;
 	unsigned nsamples = 0;
 	for (size_t i = history.size() - 1; i != -1 && nsamples < maxSamples; i--) {
-		sum += (double) v;
+		sum += (double) history[i];
 		nsamples++;
 	}
 	return sum / (double) nsamples;

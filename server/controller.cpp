@@ -112,13 +112,14 @@ void Controller::Run() {
 
 		float batteryV          = Monitor->BatteryV;
 		int   maxLoadW          = Monitor->MaxLoadW;
+		int   avgLoadW          = Monitor->AvgLoadW;
 		bool  monitorIsAlive    = Monitor->IsInitialized;
 		bool  isSolarTime       = nowP > SolarOnAt && nowP < SolarOffAt;
 		int   solarV            = Monitor->AvgSolarV;
 		bool  hasGridPower      = Monitor->HasGridPower;
 		bool  haveSolarHeavyV   = solarV > MinSolarHeavyV;
 		bool  haveBatterySolarV = solarV > MinSolarBatterySourceV;
-		bool  loadIsLow         = maxLoadW < MaxLoadBatteryModeW;
+		bool  loadIsLow         = avgLoadW < MaxLoadBatteryModeW;
 		//bool pvTooWeak         = Monitor->PVIsTooWeakForLoads;
 		bool batteryGoodForSBU = batteryV >= MinBatteryV_SBU;
 		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarHeavyV && hasGridPower) {
@@ -143,7 +144,7 @@ void Controller::Run() {
 				//fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, pvTooWeak: %s, batteryGoodForSBU: %s\n",
 				//        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", pvTooWeak ? "yes" : "no", batteryGoodForSBU ? "yes" : "no");
 				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, loadIsLow(%d): %s, batteryGoodForSBU(%.2f): %s\n",
-				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", maxLoadW, loadIsLow ? "yes" : "no", batteryV, batteryGoodForSBU ? "yes" : "no");
+				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", avgLoadW, loadIsLow ? "yes" : "no", batteryV, batteryGoodForSBU ? "yes" : "no");
 			}
 		}
 

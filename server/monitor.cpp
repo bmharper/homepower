@@ -16,11 +16,14 @@ void AddToHistory(size_t maxHistorySize, vector<T>& history, T sample) {
 }
 
 template <typename T>
-double Average(const vector<T>& history) {
-	double sum = 0;
-	for (auto v : history)
+double Average(const vector<T>& history, unsigned maxSamples = -1) {
+	double   sum      = 0;
+	unsigned nsamples = 0;
+	for (size_t i = history.size() - 1; i != -1 && nsamples < maxSamples; i--) {
 		sum += (double) v;
-	return sum / (double) history.size();
+		nsamples++;
+	}
+	return sum / (double) nsamples;
 }
 
 template <typename T>
@@ -47,6 +50,7 @@ Monitor::Monitor() {
 	SolarV            = 0;
 	AvgSolarV         = 0;
 	MaxLoadW          = OverloadThresholdWatts - 1;
+	AvgLoadW          = OverloadThresholdWatts - 1;
 	MustExit          = false;
 	IsHeavyOnInverter = false;
 	//PVIsTooWeakForLoads       = true;
@@ -170,6 +174,7 @@ void Monitor::UpdateStats(const Record& r) {
 	AddToHistory(BatteryModeHistorySize, LoadWHistory, r.LoadW);
 	AddToHistory(BatteryModeHistorySize, PvWHistory, r.PvW);
 	MaxLoadW = (int) Maximum(LoadWHistory);
+	AvgLoadW = (int) Average(LoadWHistory, 5);
 
 	//ComputePVStrength();
 }

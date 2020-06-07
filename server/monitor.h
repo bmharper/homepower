@@ -26,6 +26,7 @@ public:
 	std::atomic<int>   SolarV;                        // Solar voltage
 	std::atomic<int>   AvgSolarV;                     // Average Solar voltage (over last X minutes)
 	std::atomic<int>   MaxLoadW;                      // Max load watts in last X window
+	std::atomic<int>   AvgLoadW;                      // Average load watts over last 5 samples
 	std::atomic<float> BatteryV;                      // Battery voltage
 	//std::atomic<bool>  PVIsTooWeakForLoads;           // Set true if we're very sure that the PV is not capable of powering the current load
 

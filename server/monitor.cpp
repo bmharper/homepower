@@ -213,7 +213,7 @@ void Monitor::ComputePVStrength() {
 			nTooWeak++;
 			nValid++;
 		} else {
-			if (CurrentPowerSource == PowerSource::SolarBatteryUtility) {
+			if (CurrentPowerSource == PowerSource::SBU) {
 				// In this case, our readings are accurate, and if the PvW is less than the LoadW,
 				// then we're not meeting our needs.
 				if (LoadWHistory[i] - PvWHistory[i] > 100)

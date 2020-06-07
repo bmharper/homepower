@@ -108,7 +108,7 @@ void Controller::Run() {
 		time_t        now           = time(nullptr);
 		auto          nowP          = Now();
 		HeavyLoadMode desiredPMode  = HeavyLoadMode::Grid;
-		PowerSource   desiredSource = PowerSource::SolarUtilityBattery;
+		PowerSource   desiredSource = PowerSource::SUB;
 
 		float batteryV          = Monitor->BatteryV;
 		int   maxLoadW          = Monitor->MaxLoadW;
@@ -136,7 +136,7 @@ void Controller::Run() {
 
 		//if (isSolarTime && hasGridPower && haveBatterySolarV && loadIsLow && !pvTooWeak && batteryGoodForSBU) {
 		if (isSolarTime && hasGridPower && haveBatterySolarV && loadIsLow && batteryGoodForSBU) {
-			desiredSource = PowerSource::SolarBatteryUtility;
+			desiredSource = PowerSource::SBU;
 		} else {
 			if (time(nullptr) - lastPVStatus > 60) {
 				lastPVStatus = time(nullptr);
@@ -147,10 +147,10 @@ void Controller::Run() {
 			}
 		}
 
-		if (desiredSource != CurrentPowerSource && monitorIsAlive && (now - LastSourceSwitch > SourceCooloffSeconds || desiredSource == PowerSource::SolarUtilityBattery)) {
+		if (desiredSource != CurrentPowerSource && monitorIsAlive && (SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) {
 			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
 			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
-				if (CurrentPowerSource == PowerSource::SolarBatteryUtility && desiredSource == PowerSource::SolarUtilityBattery) {
+				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
 					// When switching from Battery to Utility, give 1 second to adjust to the grid phase, in case
 					// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA
 					// whether this is necessary, or if 1 second is long enough, or whether the VM III even loses
@@ -159,14 +159,15 @@ void Controller::Run() {
 					fprintf(stderr, "Pausing for 1 second, after switching back to grid\n");
 					sleep(1);
 				}
-				if (CurrentPowerSource != PowerSource::Unknown)
-					LastSourceSwitch = now;
+				SourceCooloff.Switching(now, desiredSource == PowerSource::SBU);
 				CurrentPowerSource          = desiredSource;
 				Monitor->CurrentPowerSource = CurrentPowerSource;
 			} else {
 				fprintf(stderr, "Switching inverter mode failed\n");
 			}
 		}
+
+		SourceCooloff.Notify(now, desiredSource == PowerSource::SBU);
 
 		if (desiredPMode != CurrentHeavyLoadMode) {
 			if (desiredPMode == HeavyLoadMode::Grid || now - LastHeavySwitch > HeavyCooloffSeconds) {

@@ -4,9 +4,9 @@ namespace homepower {
 
 enum class PowerSource {
 	Unknown,
-	UtilitySolarBattery,
-	SolarUtilityBattery,
-	SolarBatteryUtility,
+	USB, // Utility Solar Battery
+	SUB, // Solar Utility Battery
+	SBU, // Solar Battery Utility
 };
 
 enum class ChargerPriority {

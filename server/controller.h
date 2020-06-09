@@ -70,7 +70,7 @@ public:
 	int       TimezoneOffsetMinutes  = 120;              // 120 = UTC+2 (Overridden by constructor)
 	int       MinSolarHeavyV         = 160;              // Minimum solar voltage before we'll put heavy loads on it
 	int       MinSolarBatterySourceV = 190;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
-	int       MaxLoadBatteryModeW    = 800;              // Maximum load for "SBU" mode
+	int       MaxLoadBatteryModeW    = 1000;             // Maximum load for "SBU" mode
 	float     MinBatteryV_SBU        = 25.5f;            // Minimum battery voltage for "SBU" mode
 	TimePoint SolarOnAt              = TimePoint(7, 0);  // Ignore any solar voltage before this time
 	TimePoint SolarOffAt             = TimePoint(18, 0); // Ignore any solar voltage after this time

@@ -110,6 +110,21 @@ sudo journalctl -u power
 sudo systemctl daemon-reload
 ```
 
+# Install grafana
+If you want to see pretty graphs of your data, then I recommend installing Grafana.
+Grafana runs just fine a modern Raspberry PI. Just search the internet for instructions on
+[how to install it](https://grafana.com/tutorials/install-grafana-on-raspberry-pi).
+
+In order to setup Grafana you'll need these details for connecting to the Postgres database:
+|||
+|-|-|
+|Host    |localhost|
+|Database|power|
+|Username|pi|
+|Password|homepower|
+
+All the data comes from the `readings` table. The time column is `time`, and the rest should be self-explanatory.
+
 # Docs, history
 * https://github.com/ned-kelly/docker-voltronic-homeassistant
 * http://forums.aeva.asn.au/uploads/293/HS_MS_MSX_RS232_Protocol_20140822_after_current_upgrade.pdf

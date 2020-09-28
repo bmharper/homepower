@@ -5,10 +5,10 @@
 #include <unistd.h>
 
 int main(int argc, char** argv) {
-	bool runController = true;
+	bool runController = false;
 	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-r") == 0) {
-			runController = false;
+		if (strcmp(argv[i], "-c") == 0) {
+			runController = true;
 		} else {
 			fprintf(stderr, "Unknown command '%s'\n", argv[i]);
 			return 1;

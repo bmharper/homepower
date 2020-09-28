@@ -1,13 +1,47 @@
 # Install
 
+## Install git and build tools
 ```shell
-sudo apt-get install -y clang wiringpi
-make build/server/server build/inverter
-``` 
+sudo apt install git build-essential clang wiringpi
+```
 
-### Test
+## Download and build
+```shell
+git clone https://github.com/bmharper/homepower
+cd homepower
+make build/server/server build/inverter
+```
+
+## Test
 ```shell
 sudo build/inverter /dev/hidraw0 QPIGS
+```
+If the test is successful, then you should see something like this:
+```json
+{
+    "ACInHz": 50.0,
+    "ACInV": 248.4,
+    "ACOutHz": 50.0,
+    "ACOutV": 230.6,
+    "BatChA": 0.0,
+    "BatP": 85.0,
+    "BatV": 27.0,
+    "BusV": 427.0,
+    "LoadP": 13.0,
+    "LoadVA": 414.0,
+    "LoadW": 339.0,
+    "PvA": 0.9,
+    "PvV": 254.7,
+    "PvW": 229.0,
+    "Raw": "(248.4 50.0 230.6 50.0 0414 0339 013 427 27.00 000 085 0030 00.9 254.7 00.00 00003 10010000 00 00 00229 010",
+    "Temp": 30.0,
+    "Unknown1": 0.0,
+    "Unknown2": "00003",
+    "Unknown3": "10010000",
+    "Unknown4": "00",
+    "Unknown5": "00",
+    "Unknown6": "010"
+}
 ```
 
 # Postgres setup
@@ -31,7 +65,7 @@ In `/etc/postgresql/11/main/postgresql.conf`:
 listen_addresses = '*'
 ```
 
-Restart Postgres
+### Restart Postgres
 ```shell
 sudo systemctl restart postgresql
 # Make sure everything is still OK
@@ -63,7 +97,8 @@ select * from readings;
 \q
 ```
 
-# Install systemd service
+# Install power monitor as a systemd service
+You'll want to do this so that the monitor starts up with your system
 ```shell
 sudo cp systemd/power.service /etc/systemd/system
 # Edit /etc/systemd/system/power.service if your path is not /home/pi/homepower

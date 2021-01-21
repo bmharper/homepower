@@ -103,6 +103,8 @@ You'll want to do this so that the monitor starts up with your system
 ```shell
 sudo cp systemd/power.service /etc/systemd/system
 # Edit /etc/systemd/system/power.service if your path is not /home/pi/homepower
+# Also, if you want the 'controller' mode switched on (you probably don't!), then
+# change the command inside power.service to ExecStart=/home/pi/homepower/build/server/server -c
 sudo systemctl enable power
 sudo systemctl start power
 # Inspect output

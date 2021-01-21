@@ -56,6 +56,7 @@ Monitor::Monitor() {
 	//PVIsTooWeakForLoads       = true;
 	CurrentPowerSource = PowerSource::Unknown;
 	BatteryV           = 0;
+	SolarDeficitW      = 0;
 	RecordNext         = 0; // Send one sample as soon as we come online
 
 	// assume:
@@ -177,6 +178,18 @@ void Monitor::UpdateStats(const Record& r) {
 	AvgLoadW = (int) Average(LoadWHistory, 5);
 
 	//ComputePVStrength();
+	ComputeSolarDeficit();
+}
+
+// Our real goal is to compute the amount of Solar Watts available. However, we have a problem:
+// The inverter doesn't tell us what the available solar power is - it only tells us how much
+// it is currently using. And it will never use more than it needs.
+// So the only thing we can actually compute is the delta between Power Output and Solar Input.
+// When solar is sufficient to power all loads, then the delta between those two is small.
+// When solar is not sufficient, then you see a consistent delta between solar and power output.
+// This is what we're looking for here.
+void Monitor::ComputeSolarDeficit() {
+	// TODO
 }
 
 // What we're looking for here, is a situation where the PvW is consistently

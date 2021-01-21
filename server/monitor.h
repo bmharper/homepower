@@ -28,6 +28,7 @@ public:
 	std::atomic<int>   MaxLoadW;                      // Max load watts in last X window
 	std::atomic<int>   AvgLoadW;                      // Average load watts over last 5 samples
 	std::atomic<float> BatteryV;                      // Battery voltage
+	std::atomic<int>   SolarDeficitW;                 // Watts of load - Watts of solar (will be zero if it looks like solar is powering loads 100%)
 	//std::atomic<bool>  PVIsTooWeakForLoads;           // Set true if we're very sure that the PV is not capable of powering the current load
 
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
@@ -79,6 +80,7 @@ private:
 	bool ReadInverterStats(bool saveReading);
 	void UpdateStats(const Record& r);
 	//void ComputePVStrength();
+	void        ComputeSolarDeficit();
 	bool        MakeRecord(std::string inp, Record& r);
 	bool        CommitReadings();
 	std::string ProcessPath();

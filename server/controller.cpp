@@ -76,7 +76,7 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 	if (CurrentHeavyLoadMode == m && !forceWrite)
 		return;
 
-	printf("Set mode to %s\n", ModeToString(m));
+	fprintf(stderr, "Set heavy load mode to %s\n", ModeToString(m));
 
 	timespec pause;
 	pause.tv_sec  = 0;

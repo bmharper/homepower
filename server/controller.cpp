@@ -46,24 +46,23 @@ Controller::Controller(homepower::Monitor* monitor) {
 	digitalWrite(GpioPinGrid, 0);
 	digitalWrite(GpioPinInverter, 0);
 	CurrentHeavyLoadMode = HeavyLoadMode::Off;
-	HeavyCooloffSeconds  = HeavyCooloffSecondsDefault;
 
 	time_t    t  = time(NULL);
 	struct tm lt = {0};
 	localtime_r(&t, &lt);
 	TimezoneOffsetMinutes = (int) (lt.tm_gmtoff / 60);
-	printf("Offset to GMT is %d minutes\n", TimezoneOffsetMinutes);
+	fprintf(stderr, "Offset to GMT is %d minutes\n", TimezoneOffsetMinutes);
 
 	auto now = Now();
-	printf("Time now (local): %d:%02d\n", now.Hour, now.Minute);
+	fprintf(stderr, "Time now (local): %d:%02d\n", now.Hour, now.Minute);
 }
 
 void Controller::Start() {
 	MustExit = false;
 	Thread   = thread([&]() {
-        printf("Controller started\n");
+        fprintf(stderr, "Controller started\n");
         Run();
-        printf("Controller exited\n");
+        fprintf(stderr, "Controller exited\n");
     });
 }
 
@@ -109,26 +108,29 @@ void Controller::Run() {
 		auto          nowP          = Now();
 		HeavyLoadMode desiredPMode  = HeavyLoadMode::Grid;
 		PowerSource   desiredSource = PowerSource::SUB;
+		int           solarDeficitW = Monitor->SolarDeficitW;
 
-		float batteryV          = Monitor->BatteryV;
-		int   maxLoadW          = Monitor->MaxLoadW;
-		int   avgLoadW          = Monitor->AvgLoadW;
-		bool  monitorIsAlive    = Monitor->IsInitialized;
-		bool  isSolarTime       = nowP > SolarOnAt && nowP < SolarOffAt;
-		int   solarV            = Monitor->AvgSolarV;
-		bool  hasGridPower      = Monitor->HasGridPower;
-		bool  haveSolarHeavyV   = solarV > MinSolarHeavyV;
-		bool  haveBatterySolarV = solarV > MinSolarBatterySourceV;
-		bool  loadIsLow         = avgLoadW < MaxLoadBatteryModeW;
+		float batteryV             = Monitor->BatteryV;
+		int   maxLoadW             = Monitor->MaxLoadW;
+		int   avgLoadW             = Monitor->AvgLoadW;
+		bool  monitorIsAlive       = Monitor->IsInitialized;
+		bool  isSolarTime          = nowP > SolarOnAt && nowP < SolarOffAt;
+		int   solarV               = Monitor->AvgSolarV;
+		bool  hasGridPower         = Monitor->HasGridPower;
+		bool  solarIsPoweringLoads = solarDeficitW < MaxSolarDeficit;
+		bool  haveSolarHeavyV      = solarV > MinSolarHeavyV;
+		bool  haveBatterySolarV    = solarV > MinSolarBatterySourceV;
+		bool  loadIsLow            = avgLoadW < MaxLoadBatteryModeW;
 		//bool pvTooWeak         = Monitor->PVIsTooWeakForLoads;
 		bool batteryGoodForSBU = batteryV >= MinBatteryV_SBU;
-		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarHeavyV && hasGridPower) {
+		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarHeavyV && (hasGridPower || solarIsPoweringLoads)) {
 			desiredPMode = HeavyLoadMode::Inverter;
 		} else {
 			if (monitorIsAlive && time(nullptr) - lastStatus > 10 * 60) {
 				lastStatus = time(nullptr);
-				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, IsOverloaded: %s (time %d:%02d)\n",
+				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, SolarDeficitW: %d (max %d), IsOverloaded: %s (time %d:%02d)\n",
 				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarHeavyV ? "yes" : "no",
+				        solarDeficitW, MaxSolarDeficit,
 				        Monitor->IsOverloaded ? "yes" : "no",
 				        nowP.Hour, nowP.Minute);
 				fflush(stderr);
@@ -143,8 +145,11 @@ void Controller::Run() {
 				lastPVStatus = time(nullptr);
 				//fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, pvTooWeak: %s, batteryGoodForSBU: %s\n",
 				//        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", pvTooWeak ? "yes" : "no", batteryGoodForSBU ? "yes" : "no");
-				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, loadIsLow(%d): %s, batteryGoodForSBU(%.2f): %s\n",
-				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", avgLoadW, loadIsLow ? "yes" : "no", batteryV, batteryGoodForSBU ? "yes" : "no");
+				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, loadIsLow(%d): %s, solarDeficitW: %d, batteryGoodForSBU(%.2f): %s\n",
+				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", avgLoadW,
+				        loadIsLow ? "yes" : "no",
+				        solarDeficitW,
+				        batteryV, batteryGoodForSBU ? "yes" : "no");
 			}
 		}
 
@@ -171,24 +176,13 @@ void Controller::Run() {
 		SourceCooloff.Notify(now, desiredSource == PowerSource::SBU);
 
 		if (desiredPMode != CurrentHeavyLoadMode) {
-			if (desiredPMode == HeavyLoadMode::Grid || now - LastHeavySwitch > HeavyCooloffSeconds) {
-				if (desiredPMode == HeavyLoadMode::Grid) {
-					// Double the cooloff period, up to a maximum of 15 minutes
-					HeavyCooloffSeconds = std::min((time_t) 15 * 60, HeavyCooloffSeconds * 2);
-					fprintf(stderr, "Heavy switch cooloff doubled to %d seconds\n", (int) HeavyCooloffSeconds);
-				}
+			if (desiredPMode == HeavyLoadMode::Grid || HeavyCooloff.CanSwitch(now)) {
+				HeavyCooloff.Switching(now, desiredPMode == HeavyLoadMode::Inverter);
 				SetHeavyLoadMode(desiredPMode);
-				LastHeavySwitch = now;
 			}
 		}
 
-		if (CurrentHeavyLoadMode == HeavyLoadMode::Inverter &&
-		    now - LastHeavySwitch > HeavyCooloffSeconds * 2 &&
-		    HeavyCooloffSeconds != HeavyCooloffSecondsDefault) {
-			// We've been running on inverter for 2x the cool-off period, so assume it's safe to stay on inverter now.
-			HeavyCooloffSeconds = HeavyCooloffSecondsDefault;
-			fprintf(stderr, "Heavy switch cooloff reset to %d seconds\n", (int) HeavyCooloffSeconds);
-		}
+		HeavyCooloff.Notify(now, desiredPMode == HeavyLoadMode::Inverter);
 
 		int millisecond = 1000;
 		usleep(100 * millisecond);

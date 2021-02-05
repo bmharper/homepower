@@ -164,20 +164,22 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 
 void Monitor::UpdateStats(const Record& r) {
 	IsInitialized = true;
-	IsOverloaded  = r.LoadW > (float) OverloadThresholdWatts;
-	HasGridPower  = r.ACInV > (float) GridVoltageThreshold;
-	SolarV        = (int) r.PvV;
-	BatteryV      = r.BatV;
 
 	AddToHistory(SolarVHistorySize, SolarVHistory, r.PvV);
 	AvgSolarV = Average(SolarVHistory);
 
 	AddToHistory(BatteryModeHistorySize, LoadWHistory, r.LoadW);
-	AddToHistory(BatteryModeHistorySize, PvWHistory, r.PvW);
+	AddToHistory(BatteryModeHistorySize, SolarWHistory, r.PvW);
 	MaxLoadW = (int) Maximum(LoadWHistory);
 	AvgLoadW = (int) Average(LoadWHistory, 5);
 
-	//ComputePVStrength();
+	// We want to keep the averaging window pretty short here. We sample about once per second, and the inverter
+	// can withstand only a few seconds of overload (depending on the amount).
+	IsOverloaded = (float) Average(LoadWHistory, 2) > (float) OverloadThresholdWatts;
+	HasGridPower = r.ACInV > (float) GridVoltageThreshold;
+	SolarV       = (int) r.PvV;
+	BatteryV     = r.BatV;
+
 	ComputeSolarDeficit();
 }
 
@@ -189,84 +191,23 @@ void Monitor::UpdateStats(const Record& r) {
 // When solar is not sufficient, then you see a consistent delta between solar and power output.
 // This is what we're looking for here.
 void Monitor::ComputeSolarDeficit() {
-	// TODO
+	size_t        nSamples = 14;
+	size_t        nDiscard = 2; // discard 2 samples from either side, so we have 14-(2*2) = 10 samples that we average over
+	vector<float> deficit;
+	for (size_t i = LoadWHistory.size() - 1; i != -1 && deficit.size() < nSamples; i--) {
+		deficit.push_back(LoadWHistory[i] - SolarWHistory[i]);
+	}
+	if (deficit.size() < nSamples)
+		return;
+	sort(deficit.begin(), deficit.end());
+	float avg = 0;
+	for (size_t i = nDiscard; i < nSamples - nDiscard; i++)
+		avg += deficit[i];
+	avg /= float(nSamples - nDiscard * 2);
+	if (avg < 0)
+		avg = 0;
+	SolarDeficitW = int(avg);
 }
-
-// What we're looking for here, is a situation where the PvW is consistently
-// lower than the LoadW. However, some caveats apply. In particular, if the LoadW
-// is lower than about 300W, then the PvW will often be very low (eg 20 W).
-// I don't know why this is, but we need to account for it. So basically
-// what we're looking for here is a situation where we're drawing at least
-// 300W, and the PvW is substantially lower than the load.
-// The above comments apply when the system is in SUB mode.
-// However, when we're in SBU mode, then the readings seem to be more accurate,
-// and the PvW tracks the LoadW much better. So when we're in SBU mode, then
-// we trust the numbers more, and we reduce the thresholds.
-// SCREW IT -- this doesn't work reliably.
-/*
-void Monitor::ComputePVStrength() {
-	int  minValidSamples = 10;
-	bool debug           = false;
-	if (AvgSolarV == 0) {
-		if (debug)
-			fprintf(stderr, "AvgSolarV = 0\n");
-		PVIsTooWeakForLoads = true;
-		return;
-	}
-	if (LoadWHistory.size() < (int) minValidSamples) {
-		// not enough information
-		if (debug)
-			fprintf(stderr, "Only %d samples in LoadWHistory\n", (int) LoadWHistory.size());
-		return;
-	}
-	if (LoadWHistory.size() != PvWHistory.size()) {
-		fprintf(stderr, "Expected LoadWHistory to be same size as PvWHistory\n");
-		return;
-	}
-	int nValid   = 0;
-	int nTooWeak = 0;
-	for (size_t i = LoadWHistory.size() - 1; i != -1 && nValid < minValidSamples; i--) {
-		if (PvWHistory[i] == 0) {
-			// zero PvW is a definite signal that we're not producing anything
-			nTooWeak++;
-			nValid++;
-		} else {
-			if (CurrentPowerSource == PowerSource::SBU) {
-				// In this case, our readings are accurate, and if the PvW is less than the LoadW,
-				// then we're not meeting our needs.
-				if (LoadWHistory[i] - PvWHistory[i] > 100)
-					nTooWeak++;
-				nValid++;
-			} else {
-				// In this case, our readings are inaccurate, and the system often seems to generate
-				// less PvW than is needed.
-				if (LoadWHistory[i] < 200) {
-					// Below 200, we definitely can't see much
-					nValid++;
-				} else if (LoadWHistory[i] > 300) {
-					if (LoadWHistory[i] - PvWHistory[i] > 100)
-						nTooWeak++;
-					nValid++;
-				}
-			}
-		}
-	}
-	if (nValid < minValidSamples) {
-		// not enough information
-		if (debug)
-			fprintf(stderr, "Only %d valid samples in load history (need at least %d)\n", nValid, minValidSamples);
-		return;
-	}
-	double pTooWeak  = (double) nTooWeak / (double) nValid;
-	bool   isTooWeak = pTooWeak > 0.5;
-	if (isTooWeak != PVIsTooWeakForLoads) {
-		fprintf(stderr, "Changing PVIsTooWeakForLoads to %s. nTooWeak: %d, nValid: %d\n", isTooWeak ? "true" : "false", nTooWeak, nValid);
-	}
-	if (debug)
-		fprintf(stderr, "isTooWeak: %s, nTooWeak: %d, nValid: %d\n", isTooWeak ? "true" : "false", nTooWeak, nValid);
-	PVIsTooWeakForLoads = isTooWeak;
-}
-*/
 
 static double GetDbl(const nlohmann::json& j, const char* key) {
 	if (j.find(key) == j.end())

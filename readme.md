@@ -10,7 +10,7 @@ sudo apt install git build-essential clang wiringpi
 git clone https://github.com/bmharper/homepower
 cd homepower
 git submodule update --init --recursive
-make build/server/server build/inverter
+make -j build/server/server build/inverter
 ```
 
 ## Test

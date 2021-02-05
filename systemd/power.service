@@ -2,7 +2,7 @@
 Description=power
 
 [Service]
-WorkingDirectory=/home/pi/build
+WorkingDirectory=/home/pi/homepower/build
 ExecStart=/home/pi/homepower/build/server/server
 
 [Install]

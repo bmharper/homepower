@@ -28,8 +28,7 @@ public:
 	std::atomic<int>   MaxLoadW;                      // Max load watts in last X window
 	std::atomic<int>   AvgLoadW;                      // Average load watts over last 5 samples
 	std::atomic<float> BatteryV;                      // Battery voltage
-	std::atomic<int>   SolarDeficitW;                 // Watts of load - Watts of solar (will be zero if it looks like solar is powering loads 100%)
-	//std::atomic<bool>  PVIsTooWeakForLoads;           // Set true if we're very sure that the PV is not capable of powering the current load
+	std::atomic<int>   SolarDeficitW;                 // Watts of load minus Watts of solar (will be zero if it looks like solar is powering loads 100%)
 
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
 	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller
@@ -69,17 +68,16 @@ private:
 	std::vector<Record> Records;
 	std::vector<float>  SolarVHistory;
 	std::vector<float>  LoadWHistory;
-	std::vector<float>  PvWHistory;
+	std::vector<float>  SolarWHistory;
 	std::thread         Thread;
 	std::atomic<bool>   MustExit;
 	int                 RecordNext             = 0;
 	int                 SolarVHistorySize      = 30;
 	int                 BatteryModeHistorySize = 60;
 
-	void Run();
-	bool ReadInverterStats(bool saveReading);
-	void UpdateStats(const Record& r);
-	//void ComputePVStrength();
+	void        Run();
+	bool        ReadInverterStats(bool saveReading);
+	void        UpdateStats(const Record& r);
 	void        ComputeSolarDeficit();
 	bool        MakeRecord(std::string inp, Record& r);
 	bool        CommitReadings();

@@ -43,7 +43,7 @@ struct Cooloff {
 	void Notify(time_t now, bool wantDesiredState) {
 		if (wantDesiredState && now - LastSwitch > Current * 2 && Current != Default) {
 			// since we want to be in desiredState, and our last switch was more than Current*2 ago,
-			// we knop that we've been in the desiredState for long enough to reset our backoff period.
+			// we know that we've been in the desiredState for long enough to reset our backoff period.
 			Current = Default;
 		} else if (!wantDesiredState) {
 			// keep walking LastSwitch up, because we've just observed that the system is overloaded
@@ -72,6 +72,7 @@ public:
 	int       MinSolarBatterySourceV = 190;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
 	int       MaxLoadBatteryModeW    = 1000;             // Maximum load for "SBU" mode
 	float     MinBatteryV_SBU        = 26.0f;            // Minimum battery voltage for "SBU" mode
+	int       MaxSolarDeficit        = 200;              // Switch off heavy loads if our load demand is 200 watts more than our PV supply
 	TimePoint SolarOnAt              = TimePoint(7, 0);  // Ignore any solar voltage before this time
 	TimePoint SolarOffAt             = TimePoint(18, 0); // Ignore any solar voltage after this time
 
@@ -83,15 +84,11 @@ public:
 private:
 	std::thread       Thread;
 	std::atomic<bool> MustExit;
-	Monitor*          Monitor                    = nullptr;
-	HeavyLoadMode     CurrentHeavyLoadMode       = HeavyLoadMode::Off;
-	PowerSource       CurrentPowerSource         = PowerSource::Unknown;
-	time_t            LastHeavySwitch            = 0;
-	time_t            LastSourceSwitch           = 0;
-	time_t            HeavyCooloffSecondsDefault = 60;      // Don't switch heavy load modes more often than this, unless it's urgent (eg need to switch off heavy loads, or stop using battery)
-	time_t            HeavyCooloffSeconds        = 60;      // Starts at HeavyCooloffSecondsDefault, and doubles every time we switch back to grid.
-	time_t            SourceCooloffSeconds       = 30 * 60; // Don't switch SBU/SUB more often than this, unless it's urgent
+	Monitor*          Monitor              = nullptr;
+	HeavyLoadMode     CurrentHeavyLoadMode = HeavyLoadMode::Off;
+	PowerSource       CurrentPowerSource   = PowerSource::Unknown;
 	Cooloff           SourceCooloff;
+	Cooloff           HeavyCooloff;
 
 	void      Run();
 	TimePoint Now();

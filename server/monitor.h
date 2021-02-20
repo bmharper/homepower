@@ -14,7 +14,8 @@ namespace homepower {
 class Monitor {
 public:
 	// This is altered in the constructor, to try and find it relative to the current binary
-	std::string InverterPath = "/home/pi/homepower/build/inverter";
+	std::string InverterPath       = "/home/pi/homepower/build/inverter";
+	std::string InverterCommDeviceFile = "/dev/hidraw0";
 
 	int                SampleWriteInterval    = 20;   // Write to database once every N samples.
 	int                SecondsBetweenSamples  = 5;    // Record data every N seconds

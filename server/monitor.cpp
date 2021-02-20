@@ -85,7 +85,7 @@ void Monitor::Stop() {
 
 int Monitor::RunInverterQuery(std::string cmd, std::string& stdout) {
 	lock_guard<mutex> lock(InverterLock);
-	string            fullCmd = InverterPath + " /dev/hidraw0 " + cmd;
+	string            fullCmd = InverterPath + " " + InverterCommDeviceFile + " " + cmd;
 	auto              fd      = popen(fullCmd.c_str(), "r");
 	if (!fd) {
 		printf("Failed to launch inverter command (%s): %d\n", fullCmd.c_str(), errno);

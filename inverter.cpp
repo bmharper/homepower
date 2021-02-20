@@ -6,6 +6,8 @@
 #include <string>
 #include "json.hpp"
 
+#include <termios.h>
+
 /*
 
 QPIGS:
@@ -35,6 +37,7 @@ enum class Response {
 	FailRecv       = 3,
 	FailWriteFile  = 4,
 	DontUnderstand = 5,
+	NAK            = 6,
 };
 
 uint16_t CRC(const uint8_t* pin, size_t len) {
@@ -99,14 +102,28 @@ bool IsValidResponse(string& msg) {
 	return false;
 }
 
+void DumpMsg(const string& raw) {
+	printf("Message: [");
+	for (size_t i = 0; i < raw.size(); i++) {
+		int c = raw[i];
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+			printf("%c", c);
+		else
+			printf("%02X", c);
+	}
+	printf("]\n");
+}
+
 bool SendMsg(int fd, const string& raw) {
 	string      msg    = FinishMsg(raw);
 	const char* out    = msg.data();
 	size_t      remain = msg.size();
+	//DumpMsg(msg);
 	do {
 		int n = write(fd, out, remain);
 		if (n <= 0)
 			return false;
+		//printf("wrote %d/%d bytes\n", n, (int) msg.size());
 		out += n;
 		remain -= n;
 	} while (remain != 0);
@@ -198,6 +215,32 @@ Response Execute(string device, string cmd) {
 		return Response::FailOpenFile;
 	}
 
+	// If this looks like an RS232-to-USB adapter, then set the serial port parameters
+	if (device.find("ttyUSB") != -1) {
+		// apparently 9600 is flaky on these things
+		speed_t baud = B2400;
+
+		// Speed settings (in this case, 2400 8N1)
+		struct termios settings;
+		tcgetattr(fd, &settings);
+		//printf("Serial port settings: %x %d %d\n", settings.c_cflag, settings.c_ispeed, settings.c_ospeed);
+
+		int r = cfsetospeed(&settings, baud); // baud rate
+		//printf("cfsetospeed: %d\n", r);
+		cfmakeraw(&settings);        // It's vital to set this to RAW mode (instead of LINE)
+		settings.c_cflag &= ~PARENB; // no parity
+		settings.c_cflag &= ~CSTOPB; // 1 stop bit
+		settings.c_cflag &= ~CSIZE;
+		settings.c_cflag |= CS8 | CLOCAL; // 8 bits
+		// settings.c_lflag = ICANON;         // canonical mode
+		settings.c_oflag &= ~OPOST; // remove post-processing
+
+		r = tcsetattr(fd, TCSANOW, &settings);
+		//printf("tcsetattr: %d\n", r);
+		tcflush(fd, TCOFLUSH);
+		//tcdrain(fd);
+	}
+
 	auto res = Response::FailRecv;
 	if (SendMsg(fd, cmd)) {
 		string resp;
@@ -212,6 +255,9 @@ Response Execute(string device, string cmd) {
 				// Write a single byte, so that the caller (who is using popen), can detect that we are finished
 				printf("OK");
 				res = Response::OK;
+			} else if (resp == "(NAK") {
+				fprintf(stderr, "NAK. This is likely a CRC failure, so something wrong with the COM port or BAUD rate, etc\n");
+				res = Response::NAK;
 			} else {
 				res = Response::DontUnderstand;
 				fprintf(stderr, "RAW: <<%s>>", resp.c_str());
@@ -234,7 +280,7 @@ Response Execute(string device, string cmd) {
 
 void ShowHelp() {
 	fprintf(stderr, "inverter <device> <cmd>\n");
-	fprintf(stderr, "  example device = /dev/hidraw0\n");
+	fprintf(stderr, "  example device = /dev/hidraw0 (/dev/ttyUSB0 for RS232-to-USB adapter)\n");
 	fprintf(stderr, "  example cmd    = QPIGS\n");
 }
 

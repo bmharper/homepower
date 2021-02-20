@@ -4,17 +4,38 @@
 #include "http.h"
 #include <unistd.h>
 
+bool equals(const char* a, const char* b) {
+	return strcmp(a, b) == 0;
+}
+
 int main(int argc, char** argv) {
-	bool runController = false;
+	bool               runController = false;
+	bool               showHelp      = false;
+	homepower::Monitor monitor;
 	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-c") == 0) {
+		const char* arg = argv[i];
+		if (equals(arg, "-c")) {
 			runController = true;
+		} else if (equals(arg, "-?") || equals(arg, "-h") || equals(arg, "--help")) {
+			showHelp = true;
+		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
+			monitor.InverterCommDeviceFile = argv[i + 1];
+			i++;
 		} else {
-			fprintf(stderr, "Unknown command '%s'\n", argv[i]);
-			return 1;
+			fprintf(stderr, "Unknown argument '%s'\n", arg);
+			showHelp = true;
 		}
 	}
-	homepower::Monitor monitor;
+
+	if (showHelp) {
+		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
+		fprintf(stderr, " -c                Run controller, which switches heavy loads on GPIO pins 0 and 1\n");
+		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
+		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0\n");
+		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.InverterCommDeviceFile.c_str());
+		return 1;
+	}
+
 	monitor.Start();
 	bool ok = true;
 	if (runController) {

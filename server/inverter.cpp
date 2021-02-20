@@ -4,9 +4,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string>
-#include "json.hpp"
-
 #include <termios.h>
+#include "inverter.h"
 
 /*
 
@@ -26,19 +25,7 @@ QPIGS:
 
 using namespace std;
 
-// Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
-const double RecvTimeout = 3;
-
-// These are the process exit codes
-enum class Response {
-	OK             = 0,
-	InvalidCommand = 1,
-	FailOpenFile   = 2,
-	FailRecv       = 3,
-	FailWriteFile  = 4,
-	DontUnderstand = 5,
-	NAK            = 6,
-};
+namespace homepower {
 
 uint16_t CRC(const uint8_t* pin, size_t len) {
 	uint16_t crc_ta[16] = {
@@ -136,7 +123,7 @@ double GetTime() {
 	return (double) t.tv_sec + (double) t.tv_nsec / 1e9;
 }
 
-bool RecvMsg(int fd, string& msg) {
+bool RecvMsg(int fd, double timeout, string& msg) {
 	char buf[1024];
 	auto start = GetTime();
 	while (true) {
@@ -146,87 +133,126 @@ bool RecvMsg(int fd, string& msg) {
 			if (IsValidResponse(msg))
 				return true;
 		}
-		if (GetTime() - start > RecvTimeout)
+		if (GetTime() - start > timeout)
 			return false;
 		usleep(100);
 	}
 }
 
-// Interpret a known command, and return JSON representing it.
-// Upon failure, returns null
-nlohmann::json Interpret(string cmd, string resp) {
-	if (cmd == "QPIGS") {
-		// (000.0  00.0    228.2   50.0     0346    0337   011    429   27.00  000     095   0038  01.3  248.1  00.00  00001   10010000  00  00  00336       010
-		//  AcInV  AcInHz  AcOutV  AcOutHz  LoadVA  LoadW  Load%  BusV  BatV   BatChA  Bat%  Temp  PvA   PvV                                     PvW
-		double acInV   = 0;
-		double acInHz  = 0;
-		double acOutV  = 0;
-		double acOutHz = 0;
-		double loadVA  = 0;
-		double loadW   = 0;
-		double loadP   = 0;
-		double busV    = 0;
-		double batV    = 0;
-		double batChA  = 0;
-		double batP    = 0;
-		double temp    = 0;
-		double pvA     = 0;
-		double pvV     = 0;
-		double pvW     = 0;
-		double n[1]    = {0};
-		char   s[5][40];
-		int    tok = sscanf(resp.c_str() + 1, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s",
-                         &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV,
-                         n + 0, (char*) (s + 0), (char*) (s + 1), (char*) (s + 2), (char*) (s + 3), &pvW, (char*) (s + 4));
-		if (tok == 21) {
-			return nlohmann::json({
-			    {"Raw", resp},
-			    {"ACInV", acInV},
-			    {"ACInHz", acInHz},
-			    {"ACOutV", acOutV},
-			    {"ACOutHz", acOutHz},
-			    {"LoadVA", loadVA},
-			    {"LoadW", loadW},
-			    {"LoadP", loadP},
-			    {"BusV", busV},
-			    {"BatV", batV},
-			    {"BatChA", batChA},
-			    {"BatP", batP},
-			    {"Temp", temp},
-			    {"PvA", pvA},
-			    {"PvV", pvV},
-			    {"PvW", pvW},
-			    {"Unknown1", n[0]},
-			    {"Unknown2", s[0]},
-			    {"Unknown3", s[1]},
-			    {"Unknown4", s[2]},
-			    {"Unknown5", s[3]},
-			    {"Unknown6", s[4]},
-			});
-		}
+// Interpret a known command
+bool Inverter::Interpret(const std::string& resp, Record_QPIGS& out) {
+	// (000.0  00.0    228.2   50.0     0346    0337   011    429   27.00  000     095   0038  01.3  248.1  00.00  00001   10010000  00  00  00336       010
+	//  AcInV  AcInHz  AcOutV  AcOutHz  LoadVA  LoadW  Load%  BusV  BatV   BatChA  Bat%  Temp  PvA   PvV                                     PvW
+	double acInV   = 0;
+	double acInHz  = 0;
+	double acOutV  = 0;
+	double acOutHz = 0;
+	double loadVA  = 0;
+	double loadW   = 0;
+	double loadP   = 0;
+	double busV    = 0;
+	double batV    = 0;
+	double batChA  = 0;
+	double batP    = 0;
+	double temp    = 0;
+	double pvA     = 0;
+	double pvV     = 0;
+	double pvW     = 0;
+	double n[1]    = {0};
+	char   s[5][40];
+	int    tok = sscanf(resp.c_str() + 1, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s",
+                     &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV,
+                     n + 0, (char*) (s + 0), (char*) (s + 1), (char*) (s + 2), (char*) (s + 3), &pvW, (char*) (s + 4));
+	if (tok == 21) {
+		out.Raw      = resp;
+		out.Time     = time(nullptr);
+		out.ACInV    = acInV;
+		out.ACInHz   = acInHz;
+		out.ACOutV   = acOutV;
+		out.ACOutHz  = acOutHz;
+		out.LoadVA   = loadVA;
+		out.LoadW    = loadW;
+		out.LoadP    = loadP;
+		out.BusV     = busV;
+		out.BatP     = batP;
+		out.BatChA   = batChA;
+		out.BatV     = batV;
+		out.Temp     = temp;
+		out.PvA      = pvA;
+		out.PvV      = pvV;
+		out.PvW      = pvW;
+		out.Unknown1 = n[0];
+		out.Unknown2 = s[0];
+		out.Unknown3 = s[1];
+		out.Unknown4 = s[2];
+		out.Unknown5 = s[3];
+		out.Unknown6 = s[4];
+		return true;
 	}
-	return nlohmann::json();
+	return false;
 }
 
-Response Execute(string device, string cmd) {
-	int fd = open(device.c_str(), O_RDWR | O_NONBLOCK);
-	if (fd == -1) {
-		fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", device.c_str(), errno, strerror(errno));
-		return Response::FailOpenFile;
+nlohmann::json Inverter::Record_QPIGS::ToJSON() const {
+	return nlohmann::json({
+	    {"Raw", Raw},
+	    {"ACInV", ACInV},
+	    {"ACInHz", ACInHz},
+	    {"ACOutV", ACOutV},
+	    {"ACOutHz", ACOutHz},
+	    {"LoadVA", LoadVA},
+	    {"LoadW", LoadW},
+	    {"LoadP", LoadP},
+	    {"BusV", BusV},
+	    {"BatV", BatV},
+	    {"BatChA", BatChA},
+	    {"BatP", BatP},
+	    {"Temp", Temp},
+	    {"PvA", PvA},
+	    {"PvV", PvV},
+	    {"PvW", PvW},
+	    {"Unknown1", Unknown1},
+	    {"Unknown2", Unknown2},
+	    {"Unknown3", Unknown3},
+	    {"Unknown4", Unknown4},
+	    {"Unknown5", Unknown5},
+	    {"Unknown6", Unknown6},
+	});
+}
+
+Inverter::~Inverter() {
+	Close();
+}
+
+bool Inverter::Open() {
+	Close();
+
+	FD = open(Device.c_str(), O_RDWR | O_NONBLOCK);
+	if (FD == -1) {
+		fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", Device.c_str(), errno, strerror(errno));
+		return false;
 	}
 
 	// If this looks like an RS232-to-USB adapter, then set the serial port parameters
-	if (device.find("ttyUSB") != -1) {
+	if (Device.find("ttyUSB") != -1) {
 		// apparently 9600 is flaky on these things
 		speed_t baud = B2400;
 
 		// Speed settings (in this case, 2400 8N1)
 		struct termios settings;
-		tcgetattr(fd, &settings);
-		//printf("Serial port settings: %x %d %d\n", settings.c_cflag, settings.c_ispeed, settings.c_ospeed);
+		int            r = 0;
+		if ((r = tcgetattr(FD, &settings)) != 0) {
+			fprintf(stderr, "tcgetattr failed with %d\n", r);
+			Close();
+			return false;
+		}
 
-		int r = cfsetospeed(&settings, baud); // baud rate
-		//printf("cfsetospeed: %d\n", r);
+		// baud rate
+		r = cfsetospeed(&settings, baud);
+		if ((r = cfsetospeed(&settings, baud)) != 0) {
+			fprintf(stderr, "cfsetospeed failed with %d\n", r);
+			Close();
+			return false;
+		}
 		cfmakeraw(&settings);        // It's vital to set this to RAW mode (instead of LINE)
 		settings.c_cflag &= ~PARENB; // no parity
 		settings.c_cflag &= ~CSTOPB; // 1 stop bit
@@ -235,61 +261,90 @@ Response Execute(string device, string cmd) {
 		// settings.c_lflag = ICANON;         // canonical mode
 		settings.c_oflag &= ~OPOST; // remove post-processing
 
-		r = tcsetattr(fd, TCSANOW, &settings);
-		//printf("tcsetattr: %d\n", r);
-		tcflush(fd, TCOFLUSH);
+		if ((r = tcsetattr(FD, TCSANOW, &settings)) != 0) {
+			fprintf(stderr, "tcsetattr failed with %d\n", r);
+			Close();
+			return false;
+		}
+		tcflush(FD, TCOFLUSH);
 		//tcdrain(fd);
+	}
+	return true;
+}
+
+void Inverter::Close() {
+	if (FD == -1)
+		return;
+	close(FD);
+	FD = -1;
+}
+
+Inverter::Response Inverter::Execute(Record_QPIGS& response) {
+	return ExecuteT("QPIGS", response);
+}
+
+Inverter::Response Inverter::Execute(string cmd) {
+	string resp;
+	return Execute(cmd, resp);
+}
+
+Inverter::Response Inverter::Execute(string cmd, std::string& response) {
+	if (FD == -1) {
+		if (!Open())
+			return Response::FailOpenFile;
 	}
 
 	auto res = Response::FailRecv;
-	if (SendMsg(fd, cmd)) {
-		string resp;
-		if (RecvMsg(fd, resp)) {
-			auto inter = Interpret(cmd, resp);
-			if (!inter.is_null()) {
-				// Dump the JSON to stdout
-				res = Response::OK;
-				printf("%s\n", inter.dump(4).c_str());
-			} else if (resp == "(ACK") {
+	if (SendMsg(FD, cmd)) {
+		if (RecvMsg(FD, RecvTimeout, response)) {
+			//auto inter = Interpret(cmd, resp);
+			//if (!inter.is_null()) {
+			//	// Dump the JSON to stdout
+			//	res = Response::OK;
+			//	//printf("%s\n", inter.dump(4).c_str());
+			//	response = inter.dump(4);
+			//} else if (response == "(ACK") {
+			if (response == "(ACK") {
 				// In this case, we produce no output, but the caller can tell by our exit code that the command succeeded
 				// Write a single byte, so that the caller (who is using popen), can detect that we are finished
-				printf("OK");
+				//printf("OK");
 				res = Response::OK;
-			} else if (resp == "(NAK") {
-				fprintf(stderr, "NAK. This is likely a CRC failure, so something wrong with the COM port or BAUD rate, etc\n");
+			} else if (response == "(NAK") {
+				fprintf(stderr, "NAK (Not Acknowledged). This is likely a CRC failure, so something wrong with the COM port or BAUD rate, etc\n");
 				res = Response::NAK;
 			} else {
-				res = Response::DontUnderstand;
-				fprintf(stderr, "RAW: <<%s>>", resp.c_str());
+				//res = Response::DontUnderstand;
+				//fprintf(stderr, "RAW: <<%s>>", resp.c_str());
+				res = Response::OK;
 			}
 		} else {
 			res        = Response::FailRecv;
-			size_t len = resp.size();
+			size_t len = response.size();
 			if (len > 10)
-				fprintf(stderr, "RecvMsg Fail: %s\nLast 10 bytes: %d %d %d %d %d %d %d %d %d %d\n", resp.c_str(), resp[len - 10], resp[len - 9], resp[len - 8], resp[len - 7], resp[len - 6], resp[len - 5], resp[len - 4], resp[len - 3], resp[len - 2], resp[len - 1]);
+				fprintf(stderr, "RecvMsg Fail: %s\nLast 10 bytes: %d %d %d %d %d %d %d %d %d %d\n", response.c_str(), response[len - 10], response[len - 9], response[len - 8], response[len - 7], response[len - 6], response[len - 5], response[len - 4], response[len - 3], response[len - 2], response[len - 1]);
 			else
-				fprintf(stderr, "RecvMsg Fail: %s\n", resp.c_str());
+				fprintf(stderr, "RecvMsg Fail: %s\n", response.c_str());
 		}
 	} else {
 		res = Response::FailWriteFile;
 	}
 
-	close(fd);
 	return res;
 }
 
-void ShowHelp() {
-	fprintf(stderr, "inverter <device> <cmd>\n");
-	fprintf(stderr, "  example device = /dev/hidraw0 (/dev/ttyUSB0 for RS232-to-USB adapter)\n");
-	fprintf(stderr, "  example cmd    = QPIGS\n");
+string Inverter::RawToPrintable(const string& raw) {
+	string r;
+	for (size_t i = 0; i < raw.size(); i++) {
+		int c = raw[i];
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+			r += (char) c;
+		} else {
+			char buf[4];
+			sprintf(buf, ".%02X", c);
+			r += buf;
+		}
+	}
+	return r;
 }
 
-int main(int argc, char** argv) {
-	if (argc < 3) {
-		ShowHelp();
-		return (int) Response::InvalidCommand;
-	}
-	string device = argv[1];
-	string cmd    = argv[2];
-	return (int) Execute(device, cmd);
-}
+} // namespace homepower

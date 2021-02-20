@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
 		} else if (equals(arg, "-?") || equals(arg, "-h") || equals(arg, "--help")) {
 			showHelp = true;
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
-			monitor.InverterCommDeviceFile = argv[i + 1];
+			monitor.Inverter.Device = argv[i + 1];
 			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
 		fprintf(stderr, " -c                Run controller, which switches heavy loads on GPIO pins 0 and 1\n");
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
 		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0\n");
-		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.InverterCommDeviceFile.c_str());
+		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.Inverter.Device.c_str());
 		return 1;
 	}
 

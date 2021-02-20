@@ -58,16 +58,6 @@ Monitor::Monitor() {
 	BatteryV           = 0;
 	SolarDeficitW      = 0;
 	RecordNext         = 0; // Send one sample as soon as we come online
-
-	// assume:
-	// .../homepower/build/server/server
-	// .../homepower/build/inverter
-	// here we're going from 'server' to 'inverter'
-	auto myPath    = ProcessPath();
-	auto suffixPos = myPath.rfind("/server/server");
-	if (suffixPos == myPath.size() - 14) {
-		InverterPath = myPath.substr(0, myPath.size() - 14) + "/inverter";
-	}
 }
 
 void Monitor::Start() {
@@ -83,41 +73,11 @@ void Monitor::Stop() {
 	Thread.join();
 }
 
-int Monitor::RunInverterQuery(std::string cmd, std::string& stdout) {
-	lock_guard<mutex> lock(InverterLock);
-	string            fullCmd = InverterPath + " " + InverterCommDeviceFile + " " + cmd;
-	auto              fd      = popen(fullCmd.c_str(), "r");
-	if (!fd) {
-		printf("Failed to launch inverter command (%s): %d\n", fullCmd.c_str(), errno);
-		return 1;
-	}
-	int    start = time(nullptr);
-	string inp;
-	while (time(nullptr) - start < 3) {
-		char buf[3000];
-		int  n = fread(buf, 1, sizeof(buf) - 1, fd);
-		if (n > 0) {
-			inp.append(buf, n);
-			auto trimmed = TrimSpace(inp);
-			if (trimmed.size() > 5 && trimmed[trimmed.size() - 1] == '}') {
-				// JSON output (for query commands)
-				break;
-			}
-			if (trimmed == "OK") {
-				// Change state commands (eg POP01)
-				break;
-			}
-		}
-	}
-	stdout = TrimSpace(inp);
-	return pclose(fd);
-}
-
 bool Monitor::RunInverterCmd(std::string cmd) {
-	string out;
-	int    res = RunInverterQuery(cmd, out);
-	if (res != 0 || out != "OK") {
-		fprintf(stderr, "Command '%s' failed with %d, '%s'\n", cmd.c_str(), res, out.c_str());
+	lock_guard<mutex> lock(InverterLock);
+	auto              res = Inverter.Execute(cmd);
+	if (res != Inverter::Response::OK) {
+		fprintf(stderr, "Command '%s' failed with %d\n", cmd.c_str(), (int) res);
 		return false;
 	}
 	return true;
@@ -143,26 +103,23 @@ void Monitor::Run() {
 }
 
 bool Monitor::ReadInverterStats(bool saveReading) {
-	string out;
-	int    res = RunInverterQuery("QPIGS", out);
-	if (res != 0) {
-		fprintf(stderr, "Failed to run inverter query. Exit code = %d\n", res);
+	//printf("Reading QPIGS %f\n", (double) clock() / (double) CLOCKS_PER_SEC);
+	lock_guard<mutex>      lock(InverterLock);
+	Inverter::Record_QPIGS record;
+	auto                   res = Inverter.ExecuteT("QPIGS", record);
+	//printf("Reading QPIGS %f done\n", (double) clock() / (double) CLOCKS_PER_SEC);
+	if (res != Inverter::Response::OK) {
+		fprintf(stderr, "Failed to run inverter query. Error = %d\n", (int) res);
 		return false;
 	}
-	Record r;
-	r.Heavy = IsHeavyOnInverter;
-	if (MakeRecord(TrimSpace(out), r)) {
-		if (saveReading)
-			Records.push_back(r);
-		UpdateStats(r);
-		return true;
-	} else {
-		//printf("read: %s\n", inp.c_str());
-		return false;
-	}
+	record.Heavy = IsHeavyOnInverter;
+	if (saveReading)
+		Records.push_back(record);
+	UpdateStats(record);
+	return true;
 }
 
-void Monitor::UpdateStats(const Record& r) {
+void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	IsInitialized = true;
 
 	AddToHistory(SolarVHistorySize, SolarVHistory, r.PvV);
@@ -213,34 +170,6 @@ static double GetDbl(const nlohmann::json& j, const char* key) {
 	if (j.find(key) == j.end())
 		return 0;
 	return j[key].get<double>();
-}
-
-bool Monitor::MakeRecord(std::string inp, Record& r) {
-	//printf("inverter output: [%s]\n", inp.c_str());
-	try {
-		auto j     = nlohmann::json::parse(inp);
-		r.Time     = time(nullptr);
-		r.ACInV    = GetDbl(j, "ACInV");
-		r.ACInHz   = GetDbl(j, "ACInHz");
-		r.ACOutV   = GetDbl(j, "ACOutV");
-		r.ACOutHz  = GetDbl(j, "ACOutHz");
-		r.LoadW    = GetDbl(j, "LoadW");
-		r.LoadVA   = GetDbl(j, "LoadVA");
-		r.LoadP    = GetDbl(j, "LoadP");
-		r.BatChA   = GetDbl(j, "BatChA");
-		r.BatV     = GetDbl(j, "BatV");
-		r.BatP     = GetDbl(j, "BatP");
-		r.Temp     = GetDbl(j, "Temp");
-		r.PvV      = GetDbl(j, "PvV");
-		r.PvA      = GetDbl(j, "PvA");
-		r.PvW      = GetDbl(j, "PvW");
-		r.Unknown1 = GetDbl(j, "Unknown1");
-		return true;
-	} catch (nlohmann::json::exception& e) {
-		printf("Failed to decode JSON record [%s]\n", inp.c_str());
-		return false;
-	}
-	return true;
 }
 
 static void AddDbl(string& s, double v, bool comma = true) {
@@ -309,20 +238,6 @@ bool Monitor::CommitReadings() {
 	//printf("Send:\n%s\n", sql.c_str());
 	string cmd = "PGPASSWORD=homepower psql --host localhost --username pi --dbname power --command \"" + sql + "\"";
 	return system(cmd.c_str()) == 0;
-}
-
-std::string Monitor::ProcessPath() {
-	char buf[2048];
-	buf[0] = 0;
-	int r  = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-	if (r < 0)
-		return buf;
-
-	if (r < sizeof(buf))
-		buf[r] = 0;
-	else
-		buf[sizeof(buf) - 1] = 0;
-	return buf;
 }
 
 } // namespace homepower

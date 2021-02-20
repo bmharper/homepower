@@ -8,15 +8,12 @@
 #include <time.h>
 
 #include "commands.h"
+#include "inverter.h"
 
 namespace homepower {
 
 class Monitor {
 public:
-	// This is altered in the constructor, to try and find it relative to the current binary
-	std::string InverterPath       = "/home/pi/homepower/build/inverter";
-	std::string InverterCommDeviceFile = "/dev/hidraw0";
-
 	int                SampleWriteInterval    = 20;   // Write to database once every N samples.
 	int                SecondsBetweenSamples  = 5;    // Record data every N seconds
 	int                OverloadThresholdWatts = 2800; // The inverter is overloaded if the output load goes beyond this
@@ -34,6 +31,9 @@ public:
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
 	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller
 
+	std::mutex InverterLock; // This is held whenever talking to the Inverter
+	Inverter   Inverter;     // You must hold InverterLock when talking to Inverter
+
 	Monitor();
 	void Start();
 	void Stop();
@@ -46,43 +46,21 @@ public:
 	bool RunInverterCmd(std::string cmd);
 
 private:
-	struct Record {
-		time_t Time;
-		float  ACInV;
-		float  ACInHz;
-		float  ACOutV;
-		float  ACOutHz;
-		float  LoadVA;
-		float  LoadW;
-		float  LoadP;
-		float  BatP;
-		float  BatChA;
-		float  BatV;
-		float  Temp;
-		float  PvA;
-		float  PvV;
-		float  PvW;
-		float  Unknown1; // Similar to PvW on Bernie's inverter
-		bool   Heavy;
-	};
-	std::mutex          InverterLock; // This is held whenever talking to the inverter
-	std::vector<Record> Records;
-	std::vector<float>  SolarVHistory;
-	std::vector<float>  LoadWHistory;
-	std::vector<float>  SolarWHistory;
-	std::thread         Thread;
-	std::atomic<bool>   MustExit;
-	int                 RecordNext             = 0;
-	int                 SolarVHistorySize      = 30;
-	int                 BatteryModeHistorySize = 60;
+	std::vector<Inverter::Record_QPIGS> Records;
+	std::vector<float>                  SolarVHistory;
+	std::vector<float>                  LoadWHistory;
+	std::vector<float>                  SolarWHistory;
+	std::thread                         Thread;
+	std::atomic<bool>                   MustExit;
+	int                                 RecordNext             = 0;
+	int                                 SolarVHistorySize      = 30;
+	int                                 BatteryModeHistorySize = 60;
 
-	void        Run();
-	bool        ReadInverterStats(bool saveReading);
-	void        UpdateStats(const Record& r);
-	void        ComputeSolarDeficit();
-	bool        MakeRecord(std::string inp, Record& r);
-	bool        CommitReadings();
-	std::string ProcessPath();
+	void Run();
+	bool ReadInverterStats(bool saveReading);
+	void UpdateStats(const Inverter::Record_QPIGS& r);
+	void ComputeSolarDeficit();
+	bool CommitReadings();
 };
 
 } // namespace homepower

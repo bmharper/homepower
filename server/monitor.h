@@ -14,8 +14,8 @@ namespace homepower {
 
 class Monitor {
 public:
-	int                SampleWriteInterval    = 20;   // Write to database once every N samples.
-	int                SecondsBetweenSamples  = 5;    // Record data every N seconds
+	int                SampleWriteInterval    = 50;   // Write to database once every N samples.
+	int                SecondsBetweenSamples  = 2;    // Record data every N seconds
 	int                OverloadThresholdWatts = 2800; // The inverter is overloaded if the output load goes beyond this
 	int                GridVoltageThreshold   = 200;  // Grid voltage below this is considered "grid off"
 	std::atomic<bool>  IsInitialized;                 // Set to true once we've made our first successful reading

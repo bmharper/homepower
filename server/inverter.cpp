@@ -93,7 +93,10 @@ void DumpMsg(const string& raw) {
 	printf("Message: [");
 	for (size_t i = 0; i < raw.size(); i++) {
 		int c = raw[i];
-		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+		if ((c >= 'A' && c <= 'Z') ||
+		    (c >= 'a' && c <= 'z') ||
+		    (c >= '0' && c <= '9') ||
+		    c == ' ' || c == '(' || c == ')' || c == '.')
 			printf("%c", c);
 		else
 			printf("%02X", c);
@@ -315,15 +318,14 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 			} else {
 				//res = Response::DontUnderstand;
 				//fprintf(stderr, "RAW: <<%s>>", resp.c_str());
+				//fprintf(stderr, "RecvMsg OK (%d): [%s]\n", (int) response.size(), RawToPrintable(response).c_str());
 				res = Response::OK;
 			}
 		} else {
-			res        = Response::FailRecv;
-			size_t len = response.size();
-			if (len > 10)
-				fprintf(stderr, "RecvMsg Fail: %s\nLast 10 bytes: %d %d %d %d %d %d %d %d %d %d\n", response.c_str(), response[len - 10], response[len - 9], response[len - 8], response[len - 7], response[len - 6], response[len - 5], response[len - 4], response[len - 3], response[len - 2], response[len - 1]);
-			else
-				fprintf(stderr, "RecvMsg Fail: %s\n", response.c_str());
+			res = Response::FailRecv;
+			fprintf(stderr, "RecvMsg Fail (%d): [%s]\n", (int) response.size(), RawToPrintable(response).c_str());
+			// re-open port
+			Close();
 		}
 	} else {
 		res = Response::FailWriteFile;
@@ -335,9 +337,15 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 string Inverter::RawToPrintable(const string& raw) {
 	string r;
 	for (size_t i = 0; i < raw.size(); i++) {
-		int c = raw[i];
-		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-			r += (char) c;
+		unsigned c = (unsigned char) raw[i];
+		if ((c >= 'A' && c <= 'Z') ||
+		    (c >= 'a' && c <= 'z') ||
+		    (c >= '0' && c <= '9') ||
+		    c == ' ' ||
+		    c == '(' ||
+		    c == ')' ||
+		    c == '.') {
+			r += raw[i];
 		} else {
 			char buf[4];
 			sprintf(buf, ".%02X", c);

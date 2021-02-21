@@ -87,7 +87,12 @@ void Monitor::Run() {
 	auto lastSaveTime = 0;
 	while (!MustExit) {
 		bool saveReading = time(nullptr) - lastSaveTime > SecondsBetweenSamples;
-		bool readOK      = ReadInverterStats(saveReading);
+		bool readOK      = false;
+		for (int attempt = 0; attempt < 3 && !MustExit; attempt++) {
+			readOK = ReadInverterStats(saveReading);
+			if (readOK)
+				break;
+		}
 		if (readOK && saveReading) {
 			lastSaveTime = time(nullptr);
 		}
@@ -98,7 +103,7 @@ void Monitor::Run() {
 				RecordNext = SampleWriteInterval;
 			}
 		}
-		sleep(2);
+		sleep(1);
 	};
 }
 
@@ -190,6 +195,7 @@ static void AddBool(string& s, bool v, bool comma = true) {
 
 bool Monitor::CommitReadings() {
 	string sql;
+	sql += "SET LOCAL synchronous_commit TO OFF; ";
 	sql += "INSERT INTO readings (";
 	sql += "time,";
 	sql += "acInV,";

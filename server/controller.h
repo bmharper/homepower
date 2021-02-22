@@ -68,8 +68,8 @@ public:
 	int       GpioPinInverter            = 1;
 	int       SleepMilliseconds          = 20;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time.
 	int       TimezoneOffsetMinutes      = 120;              // 120 = UTC+2 (Overridden by constructor)
-	int       MinSolarHeavyV             = 160;              // Minimum solar voltage before we'll put heavy loads on it
-	int       MinSolarBatterySourceV     = 190;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
+	int       MinSolarHeavyV             = 150;              // Minimum solar voltage before we'll put heavy loads on it
+	int       MinSolarBatterySourceV     = 150;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
 	int       MaxLoadBatteryModeW        = 1500;             // Maximum load for "SBU" mode
 	float     MinBatteryV_SBU            = 26.0f;            // Minimum battery voltage for "SBU" mode
 	int       MaxSolarDeficit_HeavyLoads = 200;              // Switch off heavy loads if our load demand is 200 watts more than our PV supply

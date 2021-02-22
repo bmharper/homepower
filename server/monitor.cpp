@@ -142,6 +142,9 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	SolarV       = (int) r.PvV;
 	BatteryV     = r.BatV;
 
+	//if (!HasGridPower)
+	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);
+
 	ComputeSolarDeficit();
 }
 

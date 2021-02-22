@@ -76,7 +76,9 @@ private:
 template <typename ResponseRecord>
 inline Inverter::Response Inverter::ExecuteT(std::string cmd, ResponseRecord& response) {
 	std::string r;
-	Execute(cmd, r);
+	auto        err = Execute(cmd, r);
+	if (err != Inverter::Response::OK)
+		return err;
 	if (!Interpret(r, response)) {
 		fprintf(stderr, "Don't understand response to %s: [%s]\n", cmd.c_str(), RawToPrintable(r).c_str());
 		return Inverter::Response::DontUnderstand;

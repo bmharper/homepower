@@ -64,17 +64,18 @@ struct Cooloff {
 
 class Controller {
 public:
-	int       GpioPinGrid            = 0;
-	int       GpioPinInverter        = 1;
-	int       SleepMilliseconds      = 20;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time.
-	int       TimezoneOffsetMinutes  = 120;              // 120 = UTC+2 (Overridden by constructor)
-	int       MinSolarHeavyV         = 160;              // Minimum solar voltage before we'll put heavy loads on it
-	int       MinSolarBatterySourceV = 190;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
-	int       MaxLoadBatteryModeW    = 1000;             // Maximum load for "SBU" mode
-	float     MinBatteryV_SBU        = 26.0f;            // Minimum battery voltage for "SBU" mode
-	int       MaxSolarDeficit        = 200;              // Switch off heavy loads if our load demand is 200 watts more than our PV supply
-	TimePoint SolarOnAt              = TimePoint(7, 0);  // Ignore any solar voltage before this time
-	TimePoint SolarOffAt             = TimePoint(18, 0); // Ignore any solar voltage after this time
+	int       GpioPinGrid                = 0;
+	int       GpioPinInverter            = 1;
+	int       SleepMilliseconds          = 20;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time.
+	int       TimezoneOffsetMinutes      = 120;              // 120 = UTC+2 (Overridden by constructor)
+	int       MinSolarHeavyV             = 160;              // Minimum solar voltage before we'll put heavy loads on it
+	int       MinSolarBatterySourceV     = 190;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
+	int       MaxLoadBatteryModeW        = 1500;             // Maximum load for "SBU" mode
+	float     MinBatteryV_SBU            = 26.0f;            // Minimum battery voltage for "SBU" mode
+	int       MaxSolarDeficit_HeavyLoads = 200;              // Switch off heavy loads if our load demand is 200 watts more than our PV supply
+	int       MaxSolarDeficit_SBU        = 200;              // Switch from SBU to SUB if solar is not keeping up with demand
+	TimePoint SolarOnAt                  = TimePoint(7, 0);  // Ignore any solar voltage before this time
+	TimePoint SolarOffAt                 = TimePoint(18, 0); // Ignore any solar voltage after this time
 
 	Controller(homepower::Monitor* monitor);
 	void Start();

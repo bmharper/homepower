@@ -1,6 +1,7 @@
 #include "monitor.h"
 #include <unistd.h>
 #include <stdio.h>
+#include <float.h>
 #include "../json.hpp"
 
 using namespace std;
@@ -28,7 +29,7 @@ double Average(const vector<T>& history, unsigned maxSamples = -1) {
 
 template <typename T>
 double Maximum(const vector<T>& history) {
-	double maximum = -9e99;
+	double maximum = -FLT_MAX;
 	for (auto v : history)
 		maximum = v > maximum ? v : maximum;
 	return maximum;
@@ -127,6 +128,8 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	IsInitialized = true;
 
+	AddToHistory(GridVHistorySize, GridVHistory, r.ACInV);
+
 	AddToHistory(SolarVHistorySize, SolarVHistory, r.PvV);
 	AvgSolarV = Average(SolarVHistory);
 
@@ -138,9 +141,13 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	// We want to keep the averaging window pretty short here. We sample about once per second, and the inverter
 	// can withstand only a few seconds of overload (depending on the amount).
 	IsOverloaded = (float) Average(LoadWHistory, 2) > (float) OverloadThresholdWatts;
-	HasGridPower = r.ACInV > (float) GridVoltageThreshold;
-	SolarV       = (int) r.PvV;
-	BatteryV     = r.BatV;
+
+	// Every now and then the inverter reports zero voltage from the grid for just a single
+	// sample, and we don't want those blips to cause us to change state.
+	HasGridPower = (float) Maximum(GridVHistory) > (float) GridVoltageThreshold;
+
+	SolarV   = (int) r.PvV;
+	BatteryV = r.BatV;
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);

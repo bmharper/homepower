@@ -14,7 +14,7 @@ namespace homepower {
 
 class Monitor {
 public:
-	int                SampleWriteInterval    = 50;   // Write to database once every N samples.
+	int                SampleWriteInterval    = 50;   // Write to database once every N samples (we rate-limit this to improve SSD endurance).
 	int                SecondsBetweenSamples  = 2;    // Record data every N seconds
 	int                OverloadThresholdWatts = 2800; // The inverter is overloaded if the output load goes beyond this
 	int                GridVoltageThreshold   = 200;  // Grid voltage below this is considered "grid off"
@@ -50,9 +50,11 @@ private:
 	std::vector<float>                  SolarVHistory;
 	std::vector<float>                  LoadWHistory;
 	std::vector<float>                  SolarWHistory;
+	std::vector<float>                  GridVHistory;
 	std::thread                         Thread;
 	std::atomic<bool>                   MustExit;
 	int                                 RecordNext             = 0;
+	int                                 GridVHistorySize       = 3;
 	int                                 SolarVHistorySize      = 30;
 	int                                 BatteryModeHistorySize = 60;
 

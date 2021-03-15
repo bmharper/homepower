@@ -127,6 +127,15 @@ void Controller::Run() {
 		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarHeavyV && (hasGridPower || solarIsPoweringLoads)) {
 			desiredPMode = HeavyLoadMode::Inverter;
 		} else {
+			if (!hasGridPower) {
+				// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
+				// This prevents them from being subject to a spike when the grid is switched back on again.
+				// We assume that this grid spike only lasts a few milliseconds, and by the time we've detected
+				// that the grid is back on, the spike has subsided. In other words, we make no attempt to add
+				// an extra delay before switching the grid back on.
+				desiredPMode = HeavyLoadMode::Off;
+			}
+
 			if (monitorIsAlive && time(nullptr) - lastStatus > 10 * 60) {
 				lastStatus = time(nullptr);
 				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, SolarDeficitW: %d (max %d), IsOverloaded: %s (time %d:%02d)\n",
@@ -176,7 +185,7 @@ void Controller::Run() {
 		SourceCooloff.Notify(now, desiredSource == PowerSource::SBU);
 
 		if (desiredPMode != CurrentHeavyLoadMode) {
-			if (desiredPMode == HeavyLoadMode::Grid || HeavyCooloff.CanSwitch(now)) {
+			if (desiredPMode == HeavyLoadMode::Grid || desiredPMode == HeavyLoadMode::Off || HeavyCooloff.CanSwitch(now)) {
 				HeavyCooloff.Switching(now, desiredPMode == HeavyLoadMode::Inverter);
 				SetHeavyLoadMode(desiredPMode);
 			}

@@ -72,8 +72,8 @@ public:
 	int       MinSolarBatterySourceV     = 150;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
 	int       MaxLoadBatteryModeW        = 1500;             // Maximum load for "SBU" mode
 	float     MinBatteryV_SBU            = 26.0f;            // Minimum battery voltage for "SBU" mode
-	int       MaxSolarDeficit_HeavyLoads = 200;              // Switch off heavy loads if our load demand is 200 watts more than our PV supply
-	int       MaxSolarDeficit_SBU        = 200;              // Switch from SBU to SUB if solar is not keeping up with demand
+	int       MaxSolarDeficit_HeavyLoads = 400;              // Switch off heavy loads if our load demand is 400 watts more than our PV supply
+	int       MaxSolarDeficit_SBU        = 400;              // Switch from SBU to SUB if solar is not keeping up with demand
 	TimePoint SolarOnAt                  = TimePoint(7, 0);  // Ignore any solar voltage before this time
 	TimePoint SolarOffAt                 = TimePoint(18, 0); // Ignore any solar voltage after this time
 

@@ -9,8 +9,9 @@ bool equals(const char* a, const char* b) {
 }
 
 int main(int argc, char** argv) {
-	bool               runController = false;
-	bool               showHelp      = false;
+	bool               runController              = false;
+	bool               enablePowerSourceSwitching = false;
+	bool               showHelp                   = false;
 	homepower::Monitor monitor;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
@@ -18,6 +19,8 @@ int main(int argc, char** argv) {
 			runController = true;
 		} else if (equals(arg, "-?") || equals(arg, "-h") || equals(arg, "--help")) {
 			showHelp = true;
+		} else if (equals(arg, "-s")) {
+			enablePowerSourceSwitching = true;
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
 			monitor.Inverter.Device = argv[i + 1];
 			i++;
@@ -30,6 +33,7 @@ int main(int argc, char** argv) {
 	if (showHelp) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
 		fprintf(stderr, " -c                Run controller, which switches heavy loads on GPIO pins 0 and 1\n");
+		fprintf(stderr, " -s                Enable source switching between SBU and SUB\n");
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
 		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0\n");
 		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.Inverter.Device.c_str());
@@ -40,6 +44,7 @@ int main(int argc, char** argv) {
 	bool ok = true;
 	if (runController) {
 		homepower::Controller controller(&monitor);
+		controller.EnablePowerSourceSwitch = enablePowerSourceSwitching;
 		controller.SetHeavyLoadMode(homepower::HeavyLoadMode::Grid);
 		controller.Start();
 		ok = homepower::RunHttpServer(controller);

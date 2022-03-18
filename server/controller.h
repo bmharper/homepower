@@ -66,7 +66,7 @@ class Controller {
 public:
 	int       GpioPinGrid                = 0;
 	int       GpioPinInverter            = 1;
-	int       SleepMilliseconds          = 20;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time.
+	int       SleepMilliseconds          = 10;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time, which is in ADDITION to this delay.
 	int       TimezoneOffsetMinutes      = 120;              // 120 = UTC+2 (Overridden by constructor)
 	int       MinSolarHeavyV             = 150;              // Minimum solar voltage before we'll put heavy loads on it
 	int       MinSolarBatterySourceV     = 150;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
@@ -76,6 +76,7 @@ public:
 	int       MaxSolarDeficit_SBU        = 400;              // Switch from SBU to SUB if solar is not keeping up with demand
 	TimePoint SolarOnAt                  = TimePoint(7, 0);  // Ignore any solar voltage before this time
 	TimePoint SolarOffAt                 = TimePoint(18, 0); // Ignore any solar voltage after this time
+	bool      EnablePowerSourceSwitch    = false;            // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
 
 	Controller(homepower::Monitor* monitor);
 	void Start();

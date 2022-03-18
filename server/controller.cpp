@@ -162,7 +162,10 @@ void Controller::Run() {
 			}
 		}
 
-		if (desiredSource != CurrentPowerSource && monitorIsAlive && (SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) {
+		if (EnablePowerSourceSwitch &&
+		    desiredSource != CurrentPowerSource &&
+		    monitorIsAlive &&
+		    (SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) {
 			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
 			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
 				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {

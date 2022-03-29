@@ -36,17 +36,17 @@ uint16_t CRC(const uint8_t* pin, size_t len) {
 	uint16_t crc = 0;
 
 	while (len-- != 0) {
-		uint8_t da = ((uint8_t)(crc >> 8)) >> 4;
+		uint8_t da = ((uint8_t) (crc >> 8)) >> 4;
 		crc <<= 4;
 		crc ^= crc_ta[da ^ (*ptr >> 4)];
-		da = ((uint8_t)(crc >> 8)) >> 4;
+		da = ((uint8_t) (crc >> 8)) >> 4;
 		crc <<= 4;
 		crc ^= crc_ta[da ^ (*ptr & 0x0f)];
 		ptr++;
 	}
 
 	uint8_t bCRCLow  = crc;
-	uint8_t bCRCHign = (uint8_t)(crc >> 8);
+	uint8_t bCRCHign = (uint8_t) (crc >> 8);
 
 	if (bCRCLow == 0x28 || bCRCLow == 0x0d || bCRCLow == 0x0a)
 		bCRCLow++;
@@ -67,15 +67,15 @@ string FinishMsg(const string& raw) {
 	return b;
 }
 
-bool IsValidResponse(string& msg) {
+Inverter::Response ValidateResponse(string& msg) {
 	size_t len = msg.size();
 	if (len < 4)
-		return false;
+		return Inverter::Response::FailRecvTooShort;
 	size_t i = len - 1;
 	for (; i != -1 && msg[i] == 0; i--) {
 	}
 	if (i == -1 || i < 4)
-		return false;
+		return Inverter::Response::FailRecvTooShort;
 
 	len = i + 1;
 	//printf("Testing length of %d\n", len);
@@ -84,9 +84,9 @@ bool IsValidResponse(string& msg) {
 	uint8_t  crc2 = crc & 0xff;
 	if (crc1 == msg[len - 3] && crc2 == msg[len - 2]) {
 		msg = msg.substr(0, len - 3);
-		return true;
+		return Inverter::Response::OK;
 	}
-	return false;
+	return Inverter::Response::FailRecvCRC;
 }
 
 void DumpMsg(const string& raw) {
@@ -126,19 +126,46 @@ double GetTime() {
 	return (double) t.tv_sec + (double) t.tv_nsec / 1e9;
 }
 
-bool RecvMsg(int fd, double timeout, string& msg) {
-	char buf[1024];
-	auto start = GetTime();
+Inverter::Response RecvMsg(int fd, double timeout, string& msg) {
+	char               buf[1024];
+	auto               start   = GetTime();
+	Inverter::Response lastErr = Inverter::Response::FailRecvTooShort;
+
+	// I tried this pause, to try and work around sporadic failures on my MKS 4, but this pause didn't help
+	//usleep(100000);
+
 	while (true) {
 		int n = read(fd, buf, sizeof(buf));
 		if (n > 0) {
+			//printf("read %d bytes\n", n);
 			msg.append((const char*) buf, n);
-			if (IsValidResponse(msg))
-				return true;
+			lastErr = ValidateResponse(msg);
+			if (lastErr == Inverter::Response::OK)
+				return lastErr;
 		}
+		/*
+		if (n == 0 && msg.size() > 100) {
+			// This is a weird thing that I see very frequently on my 2022 Kodak MKS 4.
+			// The first character is missing from the response.
+			auto test = msg;
+			if (test[0] != '(') {
+				printf("Added (\n");
+				test = "(" + test;
+			}
+			if (test[test.length() - 1] == 0x0d) {
+				printf("Chopped final 0x0d\n");
+				test.erase(test.end() - 1);
+			}
+			if (ValidateResponse(test) == Inverter::Response::OK) {
+				printf("Fixed!!\n");
+				msg = test;
+				return Inverter::Response::OK;
+			}
+		}
+		*/
 		if (GetTime() - start > timeout)
-			return false;
-		usleep(100);
+			return lastErr;
+		usleep(20000);
 	}
 }
 
@@ -164,8 +191,8 @@ bool Inverter::Interpret(const std::string& resp, Record_QPIGS& out) {
 	double n[1]    = {0};
 	char   s[5][40];
 	int    tok = sscanf(resp.c_str() + 1, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s",
-                     &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV,
-                     n + 0, (char*) (s + 0), (char*) (s + 1), (char*) (s + 2), (char*) (s + 3), &pvW, (char*) (s + 4));
+	                    &acInV, &acInHz, &acOutV, &acOutHz, &loadVA, &loadW, &loadP, &busV, &batV, &batChA, &batP, &temp, &pvA, &pvV,
+	                    n + 0, (char*) (s + 0), (char*) (s + 1), (char*) (s + 2), (char*) (s + 3), &pvW, (char*) (s + 4));
 	if (tok == 21) {
 		out.Raw      = resp;
 		out.Time     = time(nullptr);
@@ -237,7 +264,7 @@ bool Inverter::Open() {
 
 	// If this looks like an RS232-to-USB adapter, then set the serial port parameters
 	if (Device.find("ttyUSB") != -1) {
-		// apparently 9600 is flaky on these things
+		// 2400 is the only speed that seems to work
 		speed_t baud = B2400;
 
 		// Speed settings (in this case, 2400 8N1)
@@ -297,33 +324,20 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 			return Response::FailOpenFile;
 	}
 
-	auto res = Response::FailRecv;
+	auto res = Response::DontUnderstand;
 	if (SendMsg(FD, cmd)) {
-		if (RecvMsg(FD, RecvTimeout, response)) {
-			//auto inter = Interpret(cmd, resp);
-			//if (!inter.is_null()) {
-			//	// Dump the JSON to stdout
-			//	res = Response::OK;
-			//	//printf("%s\n", inter.dump(4).c_str());
-			//	response = inter.dump(4);
-			//} else if (response == "(ACK") {
+		res = RecvMsg(FD, RecvTimeout, response);
+		if (res == Response::OK) {
 			if (response == "(ACK") {
-				// In this case, we produce no output, but the caller can tell by our exit code that the command succeeded
-				// Write a single byte, so that the caller (who is using popen), can detect that we are finished
-				//printf("OK");
 				res = Response::OK;
 			} else if (response == "(NAK") {
 				fprintf(stderr, "NAK (Not Acknowledged). This is likely a CRC failure, so something wrong with the COM port or BAUD rate, etc\n");
 				res = Response::NAK;
 			} else {
-				//res = Response::DontUnderstand;
-				//fprintf(stderr, "RAW: <<%s>>", resp.c_str());
-				//fprintf(stderr, "RecvMsg OK (%d): [%s]\n", (int) response.size(), RawToPrintable(response).c_str());
 				res = Response::OK;
 			}
 		} else {
-			res = Response::FailRecv;
-			fprintf(stderr, "RecvMsg Fail (%d): [%s]\n", (int) response.size(), RawToPrintable(response).c_str());
+			fprintf(stderr, "RecvMsg Fail '%s' (%d): [%s]\n", DescribeResponse(res).c_str(), (int) response.size(), RawToPrintable(response).c_str());
 			// re-open port
 			Close();
 		}
@@ -353,6 +367,20 @@ string Inverter::RawToPrintable(const string& raw) {
 		}
 	}
 	return r;
+}
+
+std::string Inverter::DescribeResponse(Response r) {
+	switch (r) {
+	case Response::OK: return "OK";
+	case Response::InvalidCommand: return "InvalidCommand";
+	case Response::FailOpenFile: return "FailOpenFile";
+	case Response::FailRecvCRC: return "FailRecvCRC";
+	case Response::FailRecvTooShort: return "FailRecvTooShort";
+	case Response::FailWriteFile: return "FailWriteFile";
+	case Response::DontUnderstand: return "DontUnderstand";
+	case Response::NAK: return "NAK";
+	};
+	return "Unknown";
 }
 
 } // namespace homepower

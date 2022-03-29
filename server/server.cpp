@@ -12,6 +12,7 @@ int main(int argc, char** argv) {
 	bool               runController              = false;
 	bool               enablePowerSourceSwitching = false;
 	bool               showHelp                   = false;
+	int                overloadThresholdWatts     = 2950; // For a 3 KW inverter
 	homepower::Monitor monitor;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
@@ -24,6 +25,12 @@ int main(int argc, char** argv) {
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
 			monitor.Inverter.Device = argv[i + 1];
 			i++;
+		} else if (i + 1 < argc && (equals(arg, "-o"))) {
+			monitor.OverloadThresholdWatts = atoi(argv[i + 1]);
+			if (monitor.OverloadThresholdWatts < 100 || monitor.OverloadThresholdWatts > 20000) {
+				fprintf(stderr, "Invalid overload threshold. Must be between 100 and 20000.\n");
+			}
+			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
 			showHelp = true;
@@ -34,6 +41,7 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
 		fprintf(stderr, " -c                Run controller, which switches heavy loads on GPIO pins 0 and 1\n");
 		fprintf(stderr, " -s                Enable source switching between SBU and SUB\n");
+		fprintf(stderr, " -o <watts>        Overload threshold in watts. Default %d\n", overloadThresholdWatts);
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
 		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0\n");
 		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.Inverter.Device.c_str());

@@ -78,7 +78,7 @@ bool Monitor::RunInverterCmd(std::string cmd) {
 	lock_guard<mutex> lock(InverterLock);
 	auto              res = Inverter.Execute(cmd);
 	if (res != Inverter::Response::OK) {
-		fprintf(stderr, "Command '%s' failed with %d\n", cmd.c_str(), (int) res);
+		fprintf(stderr, "Command '%s' failed with %s\n", cmd.c_str(), Inverter::DescribeResponse(res).c_str());
 		return false;
 	}
 	return true;
@@ -251,6 +251,8 @@ bool Monitor::CommitReadings() {
 		if (i != Records.size() - 1)
 			sql += ",";
 	}
+	// This happens every now and then.. maybe due to rounding error on the seconds.. I'm not actually sure.
+	sql += " ON CONFLICT(time) DO NOTHING";
 	//printf("Send:\n%s\n", sql.c_str());
 	string cmd = "PGPASSWORD=homepower psql --host localhost --username pi --dbname power --command \"" + sql + "\"";
 	return system(cmd.c_str()) == 0;

@@ -15,13 +15,14 @@ class Inverter {
 public:
 	// These are the process exit codes
 	enum class Response {
-		OK             = 0,
-		InvalidCommand = 1,
-		FailOpenFile   = 2,
-		FailRecv       = 3,
-		FailWriteFile  = 4,
-		DontUnderstand = 5,
-		NAK            = 6,
+		OK               = 0,
+		InvalidCommand   = 1,
+		FailOpenFile     = 2,
+		FailRecvCRC      = 3,
+		FailRecvTooShort = 4,
+		FailWriteFile    = 5,
+		DontUnderstand   = 6,
+		NAK              = 7,
 	};
 
 	struct Record_QPIGS {
@@ -55,7 +56,7 @@ public:
 
 	std::string Device      = "/dev/hidraw0"; // Name of device to open, such as /dev/hidraw0 or /dev/ttyUSB0
 	int         FD          = -1;             // File handle for talking to inverter
-	double      RecvTimeout = 3;              // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
+	double      RecvTimeout = 2;              // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
 
 	~Inverter();
 	bool Open();
@@ -68,8 +69,11 @@ public:
 	template <typename ResponseRecord>
 	Response ExecuteT(std::string cmd, ResponseRecord& response);
 
+	bool Interpret(const std::string& resp, Record_QPIGS& out);
+
+	static std::string DescribeResponse(Response r);
+
 private:
-	bool        Interpret(const std::string& resp, Record_QPIGS& out);
 	std::string RawToPrintable(const std::string& raw);
 };
 

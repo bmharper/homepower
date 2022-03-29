@@ -10,12 +10,13 @@ sudo apt install git build-essential clang wiringpi
 git clone https://github.com/bmharper/homepower
 cd homepower
 git submodule update --init --recursive
-make -j build/server/server build/inverter
+make -j build/server/server build/query
 ```
 
 ## Test
 ```shell
-sudo build/inverter /dev/hidraw0 QPIGS
+sudo build/query /dev/hidraw0 QPIGS    -- If connected to USB port on inverter
+sudo build/query /dev/ttyUSB0 QPIGS    -- If connected to RS232 port on inverter, with an RS232-to-USB adaptor
 ```
 If the test is successful, then you should see something like this:
 ```json

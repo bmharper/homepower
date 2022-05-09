@@ -62,6 +62,10 @@ void Controller::Start() {
 	Thread   = thread([&]() {
         fprintf(stderr, "Controller started\n");
         fprintf(stderr, "EnablePowerSourceSwitch: %s\n", EnablePowerSourceSwitch ? "yes" : "no");
+        if (EnablePowerSourceSwitch) {
+            fprintf(stderr, "Switch to SUB at: %d:%02d\n", TimerSUB.Hour, TimerSUB.Minute);
+            fprintf(stderr, "Switch to SBU at: %d:%02d\n", TimerSBU.Hour, TimerSBU.Minute);
+        }
         Run();
         fprintf(stderr, "Controller exited\n");
     });

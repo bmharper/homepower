@@ -28,6 +28,12 @@ struct TimePoint {
 	bool operator>(const TimePoint& b) const {
 		return Hour > b.Hour || (Hour == b.Hour && Minute > b.Minute);
 	}
+	bool operator==(const TimePoint& b) const {
+		return Hour == b.Hour && Minute == b.Minute;
+	}
+	bool operator!=(const TimePoint& b) const {
+		return !(*this == b);
+	}
 	static TimePoint Now(int timezoneOffsetMinutes);
 };
 
@@ -66,17 +72,19 @@ class Controller {
 public:
 	int       GpioPinGrid                = 0;
 	int       GpioPinInverter            = 1;
-	int       SleepMilliseconds          = 10;               // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time, which is in ADDITION to this delay.
-	int       TimezoneOffsetMinutes      = 120;              // 120 = UTC+2 (Overridden by constructor)
-	int       MinSolarHeavyV             = 150;              // Minimum solar voltage before we'll put heavy loads on it
-	int       MinSolarBatterySourceV     = 150;              // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
-	int       MaxLoadBatteryModeW        = 1500;             // Maximum load for "SBU" mode
-	float     MinBatteryV_SBU            = 26.0f;            // Minimum battery voltage for "SBU" mode
-	int       MaxSolarDeficit_HeavyLoads = 400;              // Switch off heavy loads if our load demand is 400 watts more than our PV supply
-	int       MaxSolarDeficit_SBU        = 400;              // Switch from SBU to SUB if solar is not keeping up with demand
-	TimePoint SolarOnAt                  = TimePoint(7, 0);  // Ignore any solar voltage before this time
-	TimePoint SolarOffAt                 = TimePoint(18, 0); // Ignore any solar voltage after this time
-	bool      EnablePowerSourceSwitch    = false;            // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
+	int       SleepMilliseconds          = 10;                // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time, which is in ADDITION to this delay.
+	int       TimezoneOffsetMinutes      = 120;               // 120 = UTC+2 (Overridden by constructor)
+	int       MinSolarHeavyV             = 150;               // Minimum solar voltage before we'll put heavy loads on it
+	int       MinSolarBatterySourceV     = 150;               // Minimum solar voltage before we'll place the system in SBU mode. Poor proxy for actual PvW output capability.
+	int       MaxLoadBatteryModeW        = 1500;              // Maximum load for "SBU" mode
+	float     MinBatteryV_SBU            = 26.0f;             // Minimum battery voltage for "SBU" mode
+	int       MaxSolarDeficit_HeavyLoads = 400;               // Switch off heavy loads if our load demand is 400 watts more than our PV supply
+	int       MaxSolarDeficit_SBU        = 400;               // Switch from SBU to SUB if solar is not keeping up with demand
+	TimePoint SolarOnAt                  = TimePoint(7, 0);   // Ignore any solar voltage before this time
+	TimePoint SolarOffAt                 = TimePoint(18, 0);  // Ignore any solar voltage after this time
+	TimePoint TimerSUB                   = TimePoint(16, 50); // Switch to SUB at this time
+	TimePoint TimerSBU                   = TimePoint(21, 30); // Switch to SBU at this time
+	bool      EnablePowerSourceSwitch    = false;             // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
 
 	Controller(homepower::Monitor* monitor);
 	void Start();

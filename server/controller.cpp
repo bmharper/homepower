@@ -61,6 +61,7 @@ void Controller::Start() {
 	MustExit = false;
 	Thread   = thread([&]() {
         fprintf(stderr, "Controller started\n");
+        fprintf(stderr, "EnablePowerSourceSwitch: %s\n", EnablePowerSourceSwitch ? "yes" : "no");
         Run();
         fprintf(stderr, "Controller exited\n");
     });
@@ -147,6 +148,27 @@ void Controller::Run() {
 			}
 		}
 
+		// New logic, since I have 4.5 kWh of LiFePO batteries (Pylontech UP5000).
+		// In this case, we want to switch to grid power between sundown and *some night time*. Then, we're on battery mode all through that night,
+		// and all through the next day, until sundown comes again.
+		// Note that unlike all the rest of our logic, which is stateless... this logic is stateful.
+		// We only emit a decision ON THE MINUTE when the switch it supposed to happen.
+		// The reason I do it like this, is so that I can walk to my inverter and manually change it
+		// for whatever reason (eg I am gaming late at night, or I know that it's going to rain the next
+		// morning, and/or there's lots of load shedding).
+		bool enableSwitch = false;
+		if (EnablePowerSourceSwitch) {
+			if (nowP == TimerSUB) {
+				enableSwitch  = true;
+				desiredSource = PowerSource::SUB;
+			} else if (nowP == TimerSBU) {
+				enableSwitch  = true;
+				desiredSource = PowerSource::SBU;
+			}
+		}
+
+		/*
+		// Old logic that tried to minimize battery usage (when I had AGM batteries)
 		if (isSolarTime && hasGridPower && haveBatterySolarV && loadIsLow && batteryGoodForSBU && solarPowerGoodForSBU) {
 			desiredSource = PowerSource::SBU;
 		} else {
@@ -161,8 +183,9 @@ void Controller::Run() {
 				        batteryV, batteryGoodForSBU ? "yes" : "no");
 			}
 		}
+		*/
 
-		if (EnablePowerSourceSwitch &&
+		if (enableSwitch &&
 		    desiredSource != CurrentPowerSource &&
 		    monitorIsAlive &&
 		    (SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) {

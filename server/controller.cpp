@@ -189,10 +189,14 @@ void Controller::Run() {
 		}
 		*/
 
+		// NOTE: I am disabling SourceCooloff, now that I have a 4.8 kwh lithium ion battery.
+		// With the lithium ion battery, I only switch between SUB and SBU on a timer.
+		// I plan on revisiting this decision... but need a more robust decision mechanism.
+
 		if (enableSwitch &&
 		    desiredSource != CurrentPowerSource &&
-		    monitorIsAlive &&
-		    (SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) {
+		    monitorIsAlive) {
+			//(SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) { // only applicable to old AGM logic
 			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
 			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
 				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
@@ -204,7 +208,7 @@ void Controller::Run() {
 					fprintf(stderr, "Pausing for 1 second, after switching back to grid\n");
 					sleep(1);
 				}
-				SourceCooloff.Switching(now, desiredSource == PowerSource::SBU);
+				//SourceCooloff.Switching(now, desiredSource == PowerSource::SBU);
 				CurrentPowerSource          = desiredSource;
 				Monitor->CurrentPowerSource = CurrentPowerSource;
 			} else {
@@ -212,7 +216,7 @@ void Controller::Run() {
 			}
 		}
 
-		SourceCooloff.Notify(now, desiredSource == PowerSource::SBU);
+		//SourceCooloff.Notify(now, desiredSource == PowerSource::SBU);
 
 		if (desiredPMode != CurrentHeavyLoadMode) {
 			if (desiredPMode == HeavyLoadMode::Grid || desiredPMode == HeavyLoadMode::Off || HeavyCooloff.CanSwitch(now)) {

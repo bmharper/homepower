@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <float.h>
+#include <algorithm>
 #include "../json.hpp"
 
 using namespace std;
@@ -59,6 +60,7 @@ Monitor::Monitor() {
 	BatteryV           = 0;
 	SolarDeficitW      = 0;
 	RecordNext         = 0; // Send one sample as soon as we come online
+	SQLiteFilename     = "/mnt/ramdisk/readings.sqlite";
 }
 
 void Monitor::Start() {
@@ -203,9 +205,46 @@ static void AddBool(string& s, bool v, bool comma = true) {
 		s += ",";
 }
 
+// This content is duplicated inside dbcreate.sql
+const char* CreateSchemaSQL = R"(
+CREATE TABLE IF NOT EXISTS readings (
+	time TIMESTAMP NOT NULL PRIMARY KEY,
+	acInV REAL,
+	acInHz REAL,
+	acOutV REAL,
+	acOutHz REAL,
+	loadVA REAL,
+	loadW REAL,
+	loadP REAL,
+	busV REAL,
+	batV REAL,
+	batChA REAL,
+	batP REAL,
+	temp REAL,
+	pvA REAL,
+	pvV REAL,
+	pvW REAL,
+	unknown1 REAL,
+	heavy BOOLEAN
+);
+)";
+
 bool Monitor::CommitReadings() {
+	if (Records.size() == 0)
+		return true;
+
 	string sql;
-	sql += "SET LOCAL synchronous_commit TO OFF; ";
+	bool   postgres = DBMode == DBModes::Postgres;
+	if (postgres) {
+		sql += "SET LOCAL synchronous_commit TO OFF; ";
+	} else {
+		string create = CreateSchemaSQL;
+		std::replace(create.begin(), create.end(), '\n', ' ');
+		sql += create + " ";
+		sql += "DELETE FROM readings WHERE time < ";
+		AddDbl(sql, Records[0].Time - 3 * 24 * 3600, false);
+		sql += "; ";
+	}
 	sql += "INSERT INTO readings (";
 	sql += "time,";
 	sql += "acInV,";
@@ -228,9 +267,13 @@ bool Monitor::CommitReadings() {
 	for (size_t i = 0; i < Records.size(); i++) {
 		const auto& r = Records[i];
 		sql += "(";
-		sql += "to_timestamp(";
-		AddDbl(sql, r.Time, false);
-		sql += ") AT TIME ZONE 'UTC',";
+		if (postgres) {
+			sql += "to_timestamp(";
+			AddDbl(sql, r.Time, false);
+			sql += ") AT TIME ZONE 'UTC',";
+		} else {
+			AddDbl(sql, r.Time);
+		}
 		AddDbl(sql, r.ACInV);
 		AddDbl(sql, r.ACInHz);
 		AddDbl(sql, r.ACOutV);
@@ -254,7 +297,12 @@ bool Monitor::CommitReadings() {
 	// This happens every now and then.. maybe due to rounding error on the seconds.. I'm not actually sure.
 	sql += " ON CONFLICT(time) DO NOTHING";
 	//printf("Send:\n%s\n", sql.c_str());
-	string cmd = "PGPASSWORD=homepower psql --host localhost --username pi --dbname power --command \"" + sql + "\"";
+	string cmd;
+	if (postgres) {
+		cmd = "PGPASSWORD=homepower psql --host localhost --username pi --dbname power --command \"" + sql + "\"";
+	} else {
+		cmd = "sqlite3 \"" + SQLiteFilename + "\" \"" + sql + "\"";
+	}
 	return system(cmd.c_str()) == 0;
 }
 

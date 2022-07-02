@@ -12,27 +12,35 @@
 
 namespace homepower {
 
+enum class DBModes {
+	Postgres,
+	SQLite,
+};
+
 class Monitor {
 public:
-	int                SampleWriteInterval    = 50;   // Write to database once every N samples (we rate-limit this to improve SSD endurance).
-	int                SecondsBetweenSamples  = 2;    // Record data every N seconds
-	int                OverloadThresholdWatts = 2950; // The inverter is overloaded if the output load goes beyond this
-	int                GridVoltageThreshold   = 200;  // Grid voltage below this is considered "grid off"
-	std::atomic<bool>  IsInitialized;                 // Set to true once we've made our first successful reading
-	std::atomic<bool>  IsOverloaded;                  // Signalled when inverter usage is higher than OverloadThresholdWatts
-	std::atomic<bool>  HasGridPower;                  // True if the grid is on
-	std::atomic<int>   SolarV;                        // Solar voltage
-	std::atomic<int>   AvgSolarV;                     // Average Solar voltage (over last X minutes)
-	std::atomic<int>   MaxLoadW;                      // Max load watts in last X window
-	std::atomic<int>   AvgLoadW;                      // Average load watts over last 5 samples
-	std::atomic<float> BatteryV;                      // Battery voltage
-	std::atomic<int>   SolarDeficitW;                 // Watts of load minus Watts of solar (will be zero if it looks like solar is powering loads 100%)
+	DBModes            DBMode                 = DBModes::SQLite; // Which database to write to
+	int                SampleWriteInterval    = 1;               // Write to database once every N samples (rate-limit to improve SSD endurance).
+	int                SecondsBetweenSamples  = 2;               // Record data every N seconds
+	int                OverloadThresholdWatts = 2950;            // The inverter is overloaded if the output load goes beyond this
+	int                GridVoltageThreshold   = 200;             // Grid voltage below this is considered "grid off"
+	std::atomic<bool>  IsInitialized;                            // Set to true once we've made our first successful reading
+	std::atomic<bool>  IsOverloaded;                             // Signalled when inverter usage is higher than OverloadThresholdWatts
+	std::atomic<bool>  HasGridPower;                             // True if the grid is on
+	std::atomic<int>   SolarV;                                   // Solar voltage
+	std::atomic<int>   AvgSolarV;                                // Average Solar voltage (over last X minutes)
+	std::atomic<int>   MaxLoadW;                                 // Max load watts in last X window
+	std::atomic<int>   AvgLoadW;                                 // Average load watts over last 5 samples
+	std::atomic<float> BatteryV;                                 // Battery voltage
+	std::atomic<int>   SolarDeficitW;                            // Watts of load minus Watts of solar (will be zero if it looks like solar is powering loads 100%)
 
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
 	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller
 
 	std::mutex InverterLock; // This is held whenever talking to the Inverter
 	Inverter   Inverter;     // You must hold InverterLock when talking to Inverter
+
+	std::string SQLiteFilename; // When DBMode is SQLite, then we write to this sqlite DB
 
 	Monitor();
 	void Start();

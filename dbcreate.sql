@@ -1,5 +1,6 @@
---DROP TABLE IF EXISTS readings;
-CREATE TABLE readings (
+-- This content is duplicated inside monitor.cpp
+-- DROP TABLE IF EXISTS readings;
+CREATE TABLE IF NOT EXISTS readings (
 	time TIMESTAMP NOT NULL PRIMARY KEY,
 	acInV REAL,
 	acInHz REAL,

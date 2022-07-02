@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
 
 	if (showHelp) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
-		fprintf(stderr, " -c                Run controller, which switches heavy loads on GPIO pins 0 and 1\n");
+		fprintf(stderr, " -c                Run controller, which switches heavy loads using GPIO pins 17 and 18\n");
 		fprintf(stderr, " -s                Enable source switching between SBU and SUB\n");
 		fprintf(stderr, " -o <watts>        Overload threshold in watts. Default %d\n", overloadThresholdWatts);
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");

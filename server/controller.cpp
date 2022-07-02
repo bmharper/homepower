@@ -1,6 +1,6 @@
 #include <time.h>
 #include <unistd.h>
-#include <wiringPi.h>
+#include "../bcm2835/bcm2835.h"
 #include "controller.h"
 #include "monitor.h"
 
@@ -40,11 +40,14 @@ Controller::Controller(homepower::Monitor* monitor) {
 	// on for months, without a restart.
 	Monitor  = monitor;
 	MustExit = false;
-	wiringPiSetup();
-	pinMode(GpioPinGrid, OUTPUT);
-	pinMode(GpioPinInverter, OUTPUT);
-	digitalWrite(GpioPinGrid, 0);
-	digitalWrite(GpioPinInverter, 0);
+	if (bcm2835_init() == 0) {
+		fprintf(stderr, "bcm2835_init failed\n");
+		exit(1);
+	}
+	bcm2835_gpio_fsel(GpioPinGrid, BCM2835_GPIO_FSEL_OUTP);
+	bcm2835_gpio_fsel(GpioPinInverter, BCM2835_GPIO_FSEL_OUTP);
+	bcm2835_gpio_clr(GpioPinGrid);
+	bcm2835_gpio_clr(GpioPinInverter);
 	CurrentHeavyLoadMode = HeavyLoadMode::Off;
 
 	time_t    t  = time(NULL);
@@ -55,6 +58,10 @@ Controller::Controller(homepower::Monitor* monitor) {
 
 	auto now = Now();
 	fprintf(stderr, "Time now (local): %d:%02d\n", now.Hour, now.Minute);
+}
+
+Controller::~Controller() {
+	bcm2835_close();
 }
 
 void Controller::Start() {
@@ -82,23 +89,29 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 
 	fprintf(stderr, "Set heavy load mode to %s\n", ModeToString(m));
 
+	// Ideally, we'd use a switchover device that can do zero crossing,
+	// which means the switch waits until the AC signal crosses over 0 voltage.
+	// Since we can't control that, what we do is impose an extra delay
+	// in between switching the old one off, and switching the new one on.
+	// Because our contactors are physical devices with delays in them,
+	// we don't need to add much extra delay to be safe.
 	timespec pause;
 	pause.tv_sec  = 0;
-	pause.tv_nsec = SleepMilliseconds * 1000 * 1000;
+	pause.tv_nsec = SwitchSleepMilliseconds * 1000 * 1000;
 
 	if (m == HeavyLoadMode::Inverter) {
-		digitalWrite(GpioPinGrid, 0);
+		bcm2835_gpio_clr(GpioPinGrid);
 		nanosleep(&pause, nullptr);
-		digitalWrite(GpioPinInverter, 1);
+		bcm2835_gpio_set(GpioPinInverter);
 		Monitor->IsHeavyOnInverter = true;
 	} else if (m == HeavyLoadMode::Grid) {
-		digitalWrite(GpioPinInverter, 0);
+		bcm2835_gpio_clr(GpioPinInverter);
 		nanosleep(&pause, nullptr);
-		digitalWrite(GpioPinGrid, 1);
+		bcm2835_gpio_set(GpioPinGrid);
 		Monitor->IsHeavyOnInverter = false;
 	} else if (m == HeavyLoadMode::Off) {
-		digitalWrite(GpioPinInverter, 0);
-		digitalWrite(GpioPinGrid, 0);
+		bcm2835_gpio_clr(GpioPinInverter);
+		bcm2835_gpio_clr(GpioPinGrid);
 		Monitor->IsHeavyOnInverter = false;
 	}
 

@@ -49,6 +49,7 @@ Controller::Controller(homepower::Monitor* monitor) {
 	bcm2835_gpio_clr(GpioPinGrid);
 	bcm2835_gpio_clr(GpioPinInverter);
 	CurrentHeavyLoadMode = HeavyLoadMode::Off;
+	ChangePowerSourceMsg = (int) PowerSource::Unknown;
 
 	time_t    t  = time(NULL);
 	struct tm lt = {0};
@@ -84,6 +85,8 @@ void Controller::Stop() {
 }
 
 void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
+	lock_guard<mutex> lock(HeavyLoadLock);
+
 	if (CurrentHeavyLoadMode == m && !forceWrite)
 		return;
 
@@ -116,6 +119,10 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 	}
 
 	CurrentHeavyLoadMode = m;
+}
+
+void Controller::ChangePowerSource(PowerSource source) {
+	ChangePowerSourceMsg = (int) source;
 }
 
 void Controller::Run() {
@@ -181,6 +188,14 @@ void Controller::Run() {
 			} else if (nowP == TimerSBU) {
 				enableSwitch  = true;
 				desiredSource = PowerSource::SBU;
+			}
+			// Check if we have a 'please change to X mode' request from our HTTP server
+			// This is sloppy use of an atomic variable, but our needs are simple.
+			auto request = (PowerSource) ChangePowerSourceMsg.load();
+			if (request != PowerSource::Unknown) {
+				enableSwitch         = true;
+				desiredSource        = request;
+				ChangePowerSourceMsg = (int) PowerSource::Unknown; // signal that we've made the desired change
 			}
 		}
 

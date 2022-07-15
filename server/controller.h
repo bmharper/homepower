@@ -2,6 +2,7 @@
 
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <time.h>
 
 #include "commands.h"
@@ -81,9 +82,9 @@ public:
 	int       MaxSolarDeficit_HeavyLoads = 400;               // Switch off heavy loads if our load demand is 400 watts more than our PV supply
 	int       MaxSolarDeficit_SBU        = 400;               // Switch from SBU to SUB if solar is not keeping up with demand
 	TimePoint SolarOnAt                  = TimePoint(7, 0);   // Ignore any solar voltage before this time
-	TimePoint SolarOffAt                 = TimePoint(18, 0);  // Ignore any solar voltage after this time
-	TimePoint TimerSUB                   = TimePoint(16, 50); // Switch to SUB at this time
-	TimePoint TimerSBU                   = TimePoint(21, 30); // Switch to SBU at this time
+	TimePoint SolarOffAt                 = TimePoint(17, 30); // Ignore any solar voltage after this time
+	TimePoint TimerSUB                   = TimePoint(16, 45); // Switch to SUB at this time
+	TimePoint TimerSBU                   = TimePoint(22, 15); // Switch to SBU at this time
 	bool      EnablePowerSourceSwitch    = false;             // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
 
 	Controller(homepower::Monitor* monitor);
@@ -91,6 +92,7 @@ public:
 	void Start();
 	void Stop();
 	void SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite = false);
+	void ChangePowerSource(PowerSource source);
 
 private:
 	std::thread       Thread;
@@ -100,6 +102,8 @@ private:
 	PowerSource       CurrentPowerSource   = PowerSource::Unknown;
 	Cooloff           SourceCooloff;
 	Cooloff           HeavyCooloff;
+	std::mutex        HeavyLoadLock;        // Guards access to SetHeavyLoadMode
+	std::atomic<int>  ChangePowerSourceMsg; // Used by HTTP to signal to controller thread to change power source
 
 	void      Run();
 	TimePoint Now();

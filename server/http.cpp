@@ -13,6 +13,12 @@ bool RunHttpServer(Controller& controller) {
 				controller.SetHeavyLoadMode(HeavyLoadMode::Grid);
 			else if (r->Path == "/switch/off")
 				controller.SetHeavyLoadMode(HeavyLoadMode::Off);
+			else if (r->Path == "/mode/sub")
+				controller.ChangePowerSource(PowerSource::SUB);
+			else if (r->Path == "/mode/sbu")
+				controller.ChangePowerSource(PowerSource::SBU);
+			else if (r->Path == "/mode/usb")
+				controller.ChangePowerSource(PowerSource::USB);
 			else {
 				w.SetStatusAndBody(404, "Unknown POST request");
 				return;

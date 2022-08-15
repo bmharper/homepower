@@ -147,6 +147,8 @@ Inverter::Response RecvMsg(int fd, double timeout, string& msg) {
 		if (n == 0 && msg.size() > 100) {
 			// This is a weird thing that I see very frequently on my 2022 Kodak MKS 4.
 			// The first character is missing from the response.
+			// OK... that was with my Raspberry Pi 4. I have no idea what that was...
+			// Back to an original Raspberry Pi 1, and the problem is gone.
 			auto test = msg;
 			if (test[0] != '(') {
 				printf("Added (\n");
@@ -254,6 +256,9 @@ Inverter::~Inverter() {
 }
 
 bool Inverter::Open() {
+	if (DebugResponseFile != "")
+		return true;
+
 	Close();
 
 	FD = open(Device.c_str(), O_RDWR | O_NONBLOCK);
@@ -319,6 +324,23 @@ Inverter::Response Inverter::Execute(string cmd) {
 }
 
 Inverter::Response Inverter::Execute(string cmd, std::string& response) {
+	if (DebugResponseFile != "") {
+		FILE* f = fopen(DebugResponseFile.c_str(), "rb");
+		if (!f) {
+			response = "Failed to open debug file " + DebugResponseFile;
+			return Response::FailOpenFile;
+		}
+		char buf[1024];
+		while (true) {
+			size_t n = fread(buf, 1, 1024, f);
+			response.append(buf, n);
+			if (n < 1024)
+				break;
+		}
+		fclose(f);
+		return Response::OK;
+	}
+
 	if (FD == -1) {
 		if (!Open())
 			return Response::FailOpenFile;

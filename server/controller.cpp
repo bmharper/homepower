@@ -31,23 +31,26 @@ TimePoint TimePoint::Now(int timezoneOffsetMinutes) {
 	return tp;
 }
 
-Controller::Controller(homepower::Monitor* monitor) {
+Controller::Controller(homepower::Monitor* monitor, bool enableGpio) {
 	// I don't know of any way to read the state of the GPIO output pins using WiringPI,
 	// so in order to know our state at startup, we need to create it.
 	// This seems like a conservative thing to do anyway.
 	// I'm sure there is a way to read the state using other mechanisms, but I don't
 	// have any need for that, because this server is intended to come on and stay
 	// on for months, without a restart.
-	Monitor  = monitor;
-	MustExit = false;
-	if (bcm2835_init() == 0) {
-		fprintf(stderr, "bcm2835_init failed\n");
-		exit(1);
+	Monitor    = monitor;
+	MustExit   = false;
+	EnableGpio = enableGpio;
+	if (EnableGpio) {
+		if (bcm2835_init() == 0) {
+			fprintf(stderr, "bcm2835_init failed\n");
+			exit(1);
+		}
+		bcm2835_gpio_fsel(GpioPinGrid, BCM2835_GPIO_FSEL_OUTP);
+		bcm2835_gpio_fsel(GpioPinInverter, BCM2835_GPIO_FSEL_OUTP);
+		bcm2835_gpio_clr(GpioPinGrid);
+		bcm2835_gpio_clr(GpioPinInverter);
 	}
-	bcm2835_gpio_fsel(GpioPinGrid, BCM2835_GPIO_FSEL_OUTP);
-	bcm2835_gpio_fsel(GpioPinInverter, BCM2835_GPIO_FSEL_OUTP);
-	bcm2835_gpio_clr(GpioPinGrid);
-	bcm2835_gpio_clr(GpioPinInverter);
 	CurrentHeavyLoadMode = HeavyLoadMode::Off;
 	ChangePowerSourceMsg = (int) PowerSource::Unknown;
 
@@ -62,7 +65,9 @@ Controller::Controller(homepower::Monitor* monitor) {
 }
 
 Controller::~Controller() {
-	bcm2835_close();
+	if (EnableGpio) {
+		bcm2835_close();
+	}
 }
 
 void Controller::Start() {
@@ -103,18 +108,28 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 	pause.tv_nsec = SwitchSleepMilliseconds * 1000 * 1000;
 
 	if (m == HeavyLoadMode::Inverter) {
-		bcm2835_gpio_clr(GpioPinGrid);
+		if (EnableGpio) {
+			bcm2835_gpio_clr(GpioPinGrid);
+		}
 		nanosleep(&pause, nullptr);
-		bcm2835_gpio_set(GpioPinInverter);
+		if (EnableGpio) {
+			bcm2835_gpio_set(GpioPinInverter);
+		}
 		Monitor->IsHeavyOnInverter = true;
 	} else if (m == HeavyLoadMode::Grid) {
-		bcm2835_gpio_clr(GpioPinInverter);
+		if (EnableGpio) {
+			bcm2835_gpio_clr(GpioPinInverter);
+		}
 		nanosleep(&pause, nullptr);
-		bcm2835_gpio_set(GpioPinGrid);
+		if (EnableGpio) {
+			bcm2835_gpio_set(GpioPinGrid);
+		}
 		Monitor->IsHeavyOnInverter = false;
 	} else if (m == HeavyLoadMode::Off) {
-		bcm2835_gpio_clr(GpioPinInverter);
-		bcm2835_gpio_clr(GpioPinGrid);
+		if (EnableGpio) {
+			bcm2835_gpio_clr(GpioPinInverter);
+			bcm2835_gpio_clr(GpioPinGrid);
+		}
 		Monitor->IsHeavyOnInverter = false;
 	}
 
@@ -133,25 +148,28 @@ void Controller::Run() {
 		auto          nowP          = Now();
 		HeavyLoadMode desiredPMode  = HeavyLoadMode::Grid;
 		PowerSource   desiredSource = PowerSource::SUB;
-		int           solarDeficitW = Monitor->SolarDeficitW;
 
-		float batteryV             = Monitor->BatteryV;
-		int   maxLoadW             = Monitor->MaxLoadW;
-		int   avgLoadW             = Monitor->AvgLoadW;
-		bool  monitorIsAlive       = Monitor->IsInitialized;
-		bool  isSolarTime          = nowP > SolarOnAt && nowP < SolarOffAt;
-		int   solarV               = Monitor->AvgSolarV;
-		bool  hasGridPower         = Monitor->HasGridPower;
-		bool  solarIsPoweringLoads = solarDeficitW < MaxSolarDeficit_HeavyLoads;
-		bool  solarPowerGoodForSBU = solarDeficitW < MaxSolarDeficit_SBU;
-		bool  haveSolarHeavyV      = solarV > MinSolarHeavyV;
-		bool  haveBatterySolarV    = solarV > MinSolarBatterySourceV;
-		bool  loadIsLow            = avgLoadW < MaxLoadBatteryModeW;
-		//bool pvTooWeak         = Monitor->PVIsTooWeakForLoads;
-		bool batteryGoodForSBU = batteryV >= MinBatteryV_SBU;
-		if (monitorIsAlive && !Monitor->IsOverloaded && isSolarTime && haveSolarHeavyV && (hasGridPower || solarIsPoweringLoads)) {
+		bool monitorIsAlive  = Monitor->IsInitialized;
+		bool isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
+		int  solarV          = Monitor->AvgSolarV;
+		int  batteryP        = (int) Monitor->BatteryP;
+		bool hasGridPower    = Monitor->HasGridPower;
+		bool haveSolarHeavyV = solarV > MinSolarHeavyV;
+		if (monitorIsAlive && !Monitor->IsBatteryOverloaded && !Monitor->IsOutputOverloaded && isSolarTime && haveSolarHeavyV) {
 			desiredPMode = HeavyLoadMode::Inverter;
-		} else {
+
+			if (now - ChargeStartedAt < ChargeMinutes * 60) {
+				// we're still busy charging
+				desiredPMode = HeavyLoadMode::Grid;
+			} else if (batteryP <= MinBatteryChargePercent) {
+				// start charging
+				ChargeStartedAt = now;
+				desiredPMode    = HeavyLoadMode::Grid;
+				fprintf(stderr, "Battery is low, starting charge (switch off heavy loads)\n");
+			}
+		}
+
+		if (desiredPMode != HeavyLoadMode::Inverter) {
 			if (!hasGridPower) {
 				// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
 				// This prevents them from being subject to a spike when the grid is switched back on again.
@@ -161,12 +179,12 @@ void Controller::Run() {
 				desiredPMode = HeavyLoadMode::Off;
 			}
 
-			if (monitorIsAlive && time(nullptr) - lastStatus > 10 * 60) {
-				lastStatus = time(nullptr);
-				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, SolarDeficitW: %d (max %d), IsOverloaded: %s (time %d:%02d)\n",
+			if (monitorIsAlive && now - lastStatus > 10 * 60) {
+				lastStatus = now;
+				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
 				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarHeavyV ? "yes" : "no",
-				        solarDeficitW, MaxSolarDeficit_HeavyLoads,
-				        Monitor->IsOverloaded ? "yes" : "no",
+				        Monitor->IsOutputOverloaded ? "yes" : "no",
+				        Monitor->IsBatteryOverloaded ? "yes" : "no",
 				        nowP.Hour, nowP.Minute);
 				fflush(stderr);
 			}
@@ -176,55 +194,41 @@ void Controller::Run() {
 		// In this case, we want to switch to grid power between sundown and *some night time*. Then, we're on battery mode all through that night,
 		// and all through the next day, until sundown comes again.
 		// Note that unlike all the rest of our logic, which is stateless... this logic is stateful.
-		// We only emit a decision ON THE MINUTE when the switch it supposed to happen.
+		// We only emit a decision DURING THE MINUTE when the switch it supposed to happen.
 		// The reason I do it like this, is so that I can walk to my inverter and manually change it
 		// for whatever reason (eg I am gaming late at night, or I know that it's going to rain the next
 		// morning, and/or there's lots of load shedding).
-		bool enableSwitch = false;
+		desiredSource = CurrentPowerSource;
+
 		if (EnablePowerSourceSwitch) {
-			if (nowP == TimerSUB) {
-				enableSwitch  = true;
-				desiredSource = PowerSource::SUB;
-			} else if (nowP == TimerSBU) {
-				enableSwitch  = true;
-				desiredSource = PowerSource::SBU;
-			}
 			// Check if we have a 'please change to X mode' request from our HTTP server
 			// This is sloppy use of an atomic variable, but our needs are simple.
 			auto request = (PowerSource) ChangePowerSourceMsg.load();
-			if (request != PowerSource::Unknown) {
-				enableSwitch         = true;
+
+			// Note that these 'minute precision' checks will execute repeatedly for an entire minute
+			if (nowP.EqualsMinutePrecision(TimerSUB)) {
+				desiredSource = PowerSource::SUB;
+			} else if (nowP.EqualsMinutePrecision(TimerSBU)) {
+				desiredSource = PowerSource::SBU;
+			} else if (request != PowerSource::Unknown) {
 				desiredSource        = request;
 				ChangePowerSourceMsg = (int) PowerSource::Unknown; // signal that we've made the desired change
+			} else {
+				// If battery is too low, then switch back to SUB
+				if (CurrentPowerSource == PowerSource::SBU && batteryP <= MinBatteryChargePercent) {
+					ChargeStartedAt = now;
+					desiredSource   = PowerSource::SUB;
+					fprintf(stderr, "Battery is low, starting charge (switch to SUB)\n");
+				}
 			}
 		}
-
-		/*
-		// Old logic that tried to minimize battery usage (when I had AGM batteries)
-		if (isSolarTime && hasGridPower && haveBatterySolarV && loadIsLow && batteryGoodForSBU && solarPowerGoodForSBU) {
-			desiredSource = PowerSource::SBU;
-		} else {
-			if (time(nullptr) - lastPVStatus > 60) {
-				lastPVStatus = time(nullptr);
-				//fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, pvTooWeak: %s, batteryGoodForSBU: %s\n",
-				//        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", pvTooWeak ? "yes" : "no", batteryGoodForSBU ? "yes" : "no");
-				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveBatterySolarV(%d): %s, loadIsLow(%d): %s, solarDeficitW: %d, batteryGoodForSBU(%.2f): %s\n",
-				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveBatterySolarV ? "yes" : "no", avgLoadW,
-				        loadIsLow ? "yes" : "no",
-				        solarDeficitW,
-				        batteryV, batteryGoodForSBU ? "yes" : "no");
-			}
-		}
-		*/
 
 		// NOTE: I am disabling SourceCooloff, now that I have a 4.8 kwh lithium ion battery.
 		// With the lithium ion battery, I only switch between SUB and SBU on a timer.
 		// I plan on revisiting this decision... but need a more robust decision mechanism.
 
-		if (enableSwitch &&
-		    desiredSource != CurrentPowerSource &&
-		    monitorIsAlive) {
-			//(SourceCooloff.CanSwitch(now) || desiredSource == PowerSource::SUB)) { // only applicable to old AGM logic
+		if (desiredSource != CurrentPowerSource && monitorIsAlive) {
+			//(SourceCooloff.IsGood(now) || desiredSource == PowerSource::SUB)) { // only applicable to old AGM logic
 			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
 			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
 				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
@@ -236,7 +240,8 @@ void Controller::Run() {
 					fprintf(stderr, "Pausing for 1 second, after switching back to grid\n");
 					sleep(1);
 				}
-				//SourceCooloff.Switching(now, desiredSource == PowerSource::SBU);
+				if (desiredSource != PowerSource::SBU)
+					SourceCooloff.SignalAlarm(now);
 				CurrentPowerSource          = desiredSource;
 				Monitor->CurrentPowerSource = CurrentPowerSource;
 			} else {
@@ -244,16 +249,19 @@ void Controller::Run() {
 			}
 		}
 
-		//SourceCooloff.Notify(now, desiredSource == PowerSource::SBU);
+		if (desiredSource == PowerSource::SBU)
+			SourceCooloff.SignalFine(now);
 
 		if (desiredPMode != CurrentHeavyLoadMode) {
-			if (desiredPMode == HeavyLoadMode::Grid || desiredPMode == HeavyLoadMode::Off || HeavyCooloff.CanSwitch(now)) {
-				HeavyCooloff.Switching(now, desiredPMode == HeavyLoadMode::Inverter);
+			if (desiredPMode == HeavyLoadMode::Grid || desiredPMode == HeavyLoadMode::Off || HeavyCooloff.IsGood(now)) {
+				if (desiredPMode != HeavyLoadMode::Inverter)
+					HeavyCooloff.SignalAlarm(now);
 				SetHeavyLoadMode(desiredPMode);
 			}
 		}
 
-		HeavyCooloff.Notify(now, desiredPMode == HeavyLoadMode::Inverter);
+		if (desiredPMode == HeavyLoadMode::Inverter)
+			HeavyCooloff.SignalFine(now);
 
 		int millisecond = 1000;
 		usleep(100 * millisecond);

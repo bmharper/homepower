@@ -54,13 +54,15 @@ public:
 		nlohmann::json ToJSON() const;
 	};
 
-	std::string Device      = "/dev/hidraw0"; // Name of device to open, such as /dev/hidraw0 or /dev/ttyUSB0
-	int         FD          = -1;             // File handle for talking to inverter
-	double      RecvTimeout = 2;              // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
+	std::string Device            = "/dev/hidraw0"; // Name of device to open, such as /dev/hidraw0 or /dev/ttyUSB0
+	int         FD                = -1;             // File handle for talking to inverter
+	double      RecvTimeout       = 2;              // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
+	std::string DebugResponseFile = "";             // If not empty, then we don't actually talk to inverter, but read QPIGS response from this text file (this is for debugging/developing offline)
 
 	~Inverter();
 	bool Open();
 	void Close();
+
 	// Execute functions will automatically Open() if necessary
 	Response Execute(Record_QPIGS& response);
 	Response Execute(std::string cmd, std::string& response);

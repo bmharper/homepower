@@ -1,8 +1,11 @@
+# Debug
+#CC := clang -g
+#CXX := clang++ -std=c++11 -g
 
-#CC := clang -ggdb -lpthread
-CC := clang
-#CXX := clang++ -std=c++11 -ggdb -lpthread
-CXX := clang++ -std=c++11
+# Regular
+CC := clang -O1
+CXX := clang++ -std=c++11 -O1
+
 LINK := clang++ -lpthread
 CXX_EXE_OUT := -o  
 CC_OBJ_OUT := -o  

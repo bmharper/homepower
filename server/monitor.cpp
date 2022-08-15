@@ -9,31 +9,37 @@ using namespace std;
 
 namespace homepower {
 
-// Add a sample to a history of samples, chopping off the oldest samples, if the size exceeds maxHistorySize
-template <typename T>
-void AddToHistory(size_t maxHistorySize, vector<T>& history, T sample) {
-	history.push_back(sample);
-	if (history.size() > maxHistorySize)
-		history.erase(history.begin(), history.begin() + history.size() - (size_t) maxHistorySize);
-}
-
-template <typename T>
-double Average(const vector<T>& history, unsigned maxSamples = -1) {
+// Return the average value from the history buffer, going no further back than afterTime
+double Average(time_t afterTime, const RingBuffer<History>& history) {
 	double   sum      = 0;
 	unsigned nsamples = 0;
-	for (size_t i = history.size() - 1; i != -1 && nsamples < maxSamples; i--) {
-		sum += (double) history[i];
+	uint32_t idx      = history.Size() - 1;
+	while (true) {
+		if (idx == -1)
+			break;
+		auto sample = history.Peek(idx);
+		if (sample.Time < afterTime)
+			break;
+		sum += sample.Value;
 		nsamples++;
+		idx--;
 	}
-	return sum / (double) nsamples;
+	return nsamples == 0 ? 0 : sum / (double) nsamples;
 }
 
-template <typename T>
-double Maximum(const vector<T>& history) {
-	double maximum = -FLT_MAX;
-	for (auto v : history)
-		maximum = v > maximum ? v : maximum;
-	return maximum;
+float Maximum(time_t afterTime, const RingBuffer<History>& history) {
+	float    maxv = -FLT_MAX;
+	uint32_t idx  = history.Size() - 1;
+	while (true) {
+		if (idx == -1)
+			break;
+		auto sample = history.Peek(idx);
+		if (sample.Time < afterTime)
+			break;
+		maxv = std::max(maxv, sample.Value);
+		idx--;
+	}
+	return maxv;
 }
 
 // trim space from end
@@ -46,21 +52,30 @@ static string TrimSpace(const string& s) {
 }
 
 Monitor::Monitor() {
-	IsInitialized     = false;
-	IsOverloaded      = false;
-	HasGridPower      = true;
-	SolarV            = 0;
-	AvgSolarV         = 0;
-	MaxLoadW          = OverloadThresholdWatts - 1;
-	AvgLoadW          = OverloadThresholdWatts - 1;
-	MustExit          = false;
-	IsHeavyOnInverter = false;
-	//PVIsTooWeakForLoads       = true;
-	CurrentPowerSource = PowerSource::Unknown;
-	BatteryV           = 0;
-	SolarDeficitW      = 0;
-	RecordNext         = 0; // Send one sample as soon as we come online
-	SQLiteFilename     = "/mnt/ramdisk/readings.sqlite";
+	IsInitialized       = false;
+	IsOutputOverloaded  = false;
+	IsBatteryOverloaded = false;
+	HasGridPower        = true;
+	SolarV              = 0;
+	AvgSolarV           = 0;
+	MustExit            = false;
+	IsHeavyOnInverter   = false;
+	CurrentPowerSource  = PowerSource::Unknown;
+	BatteryV            = 0;
+	BatteryP            = 0;
+	RecordNext          = 0; // Send one sample as soon as we come online
+
+	// If we can't talk to the DB, then we drop records
+	// A record is 272 bytes, so 256 * 275 = about 64kb
+	Records.Initialize(256);
+
+	// We want 5 minutes of history, so if we sample once every 2 seconds, then that is
+	// 30 * 5 = 150. Rounded up to next power of 2, we get 256.
+	SolarVHistory.Initialize(256);
+	LoadWHistory.Initialize(256);
+	DeficitWHistory.Initialize(256);
+	SolarWHistory.Initialize(256);
+	GridVHistory.Initialize(256);
 }
 
 void Monitor::Start() {
@@ -100,9 +115,9 @@ void Monitor::Run() {
 			lastSaveTime = time(nullptr);
 		}
 		RecordNext--;
-		if (RecordNext <= 0 && Records.size() != 0) {
+		if (RecordNext <= 0 && Records.Size() != 0) {
 			if (CommitReadings()) {
-				Records.clear();
+				Records.Clear();
 				RecordNext = SampleWriteInterval;
 			}
 		}
@@ -122,7 +137,7 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 	}
 	record.Heavy = IsHeavyOnInverter;
 	if (saveReading)
-		Records.push_back(record);
+		Records.Add(record);
 	UpdateStats(record);
 	return true;
 }
@@ -130,57 +145,61 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	IsInitialized = true;
 
-	AddToHistory(GridVHistorySize, GridVHistory, r.ACInV);
+	time_t now = time(nullptr);
 
-	AddToHistory(SolarVHistorySize, SolarVHistory, r.PvV);
-	AvgSolarV = Average(SolarVHistory);
+	GridVHistory.Add({now, r.ACInV});
+	SolarVHistory.Add({now, r.PvV});
 
-	AddToHistory(BatteryModeHistorySize, LoadWHistory, r.LoadW);
-	AddToHistory(BatteryModeHistorySize, SolarWHistory, r.PvW);
-	MaxLoadW = (int) Maximum(LoadWHistory);
-	AvgLoadW = (int) Average(LoadWHistory, 5);
+	AvgSolarV = Average(now - 10, SolarVHistory);
 
-	// We want to keep the averaging window pretty short here. We sample about once per second, and the inverter
-	// can withstand only a few seconds of overload (depending on the amount).
-	IsOverloaded = (float) Average(LoadWHistory, 2) > (float) OverloadThresholdWatts;
+	LoadWHistory.Add({now, r.LoadW});
+	DeficitWHistory.Add({now, std::max(0.0f, r.LoadW - r.PvW)});
+
+	SolarWHistory.Add({now, r.PvW});
+
+	// These numbers are roughly drawn from my Voltronic 5.6kw MKS 4 inverter (aka MKS IV),
+	// but tweaked to be more conservative.
+	bool outputOverload = false;
+	if (Average(now - 10, LoadWHistory) > (float) InverterSustainedW * 0.97f) {
+		outputOverload = true;
+	} else if (Average(now - 5, LoadWHistory) > (float) InverterSustainedW * 1.3f) {
+		outputOverload = true;
+	} else if (r.LoadW > (float) InverterSustainedW * 1.7f) {
+		outputOverload = true;
+	}
+
+	IsOutputOverloaded = outputOverload;
+
+	//printf("Output:  %4.0f %4.0f %4.0f vs %4.0f %4.0f %4.0f, Overloaded: %s\n", Average(now - 10, LoadWHistory), Average(now - 5, LoadWHistory), r.LoadW,
+	//       (float) InverterSustainedW * 0.97f, (float) InverterSustainedW * 1.3f, (float) InverterSustainedW * 1.7f, outputOverload ? "yes" : "no");
+
+	// These numbers are drawn from my Pylontech UP5000 battery
+	bool batteryOverloaded = false;
+	if (Average(now - 4 * 60, DeficitWHistory) > (float) BatteryWh * 0.5f) {
+		batteryOverloaded = true;
+	} else if (Average(now - 60, DeficitWHistory) > (float) BatteryWh * 0.9f) {
+		batteryOverloaded = true;
+	} else if (Average(now - 15, DeficitWHistory) > (float) BatteryWh * 1.2f) {
+		batteryOverloaded = true;
+	} else if (Average(now - 5, DeficitWHistory) > (float) BatteryWh * 1.5f) {
+		batteryOverloaded = true;
+	}
+
+	IsBatteryOverloaded = batteryOverloaded;
+
+	//printf("Battery: %4.0f %4.0f %4.0f vs %4.0f %4.0f %4.0f, Overloaded: %s\n", Average(now - 4 * 60, DeficitWHistory), Average(now - 60, DeficitWHistory), Average(now - 15, DeficitWHistory),
+	//       (float) BatteryWh * 0.5f, (float) BatteryWh * 0.9f, (float) BatteryWh * 1.5f, batteryOverloaded ? "yes" : "no");
 
 	// Every now and then the inverter reports zero voltage from the grid for just a single
 	// sample, and we don't want those blips to cause us to change state.
-	HasGridPower = (float) Maximum(GridVHistory) > (float) GridVoltageThreshold;
+	HasGridPower = (float) Maximum(now - 5, GridVHistory) > (float) GridVoltageThreshold;
 
 	SolarV   = (int) r.PvV;
 	BatteryV = r.BatV;
+	BatteryP = r.BatP;
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);
-
-	ComputeSolarDeficit();
-}
-
-// Our real goal is to compute the amount of Solar Watts available. However, we have a problem:
-// The inverter doesn't tell us what the available solar power is - it only tells us how much
-// it is currently using. And it will never use more than it needs.
-// So the only thing we can actually compute is the delta between Power Output and Solar Input.
-// When solar is sufficient to power all loads, then the delta between those two is small.
-// When solar is not sufficient, then you see a consistent delta between solar and power output.
-// This is what we're looking for here.
-void Monitor::ComputeSolarDeficit() {
-	size_t        nSamples = 14;
-	size_t        nDiscard = 2; // discard 2 samples from either side, so we have 14-(2*2) = 10 samples that we average over
-	vector<float> deficit;
-	for (size_t i = LoadWHistory.size() - 1; i != -1 && deficit.size() < nSamples; i--) {
-		deficit.push_back(LoadWHistory[i] - SolarWHistory[i]);
-	}
-	if (deficit.size() < nSamples)
-		return;
-	sort(deficit.begin(), deficit.end());
-	float avg = 0;
-	for (size_t i = nDiscard; i < nSamples - nDiscard; i++)
-		avg += deficit[i];
-	avg /= float(nSamples - nDiscard * 2);
-	if (avg < 0)
-		avg = 0;
-	SolarDeficitW = int(avg);
 }
 
 static double GetDbl(const nlohmann::json& j, const char* key) {
@@ -230,19 +249,26 @@ CREATE TABLE IF NOT EXISTS readings (
 )";
 
 bool Monitor::CommitReadings() {
-	if (Records.size() == 0)
+	if (Records.Size() == 0)
 		return true;
 
+	bool postgres = DBMode == DBModes::Postgres;
+
+	string create = CreateSchemaSQL;
+	std::replace(create.begin(), create.end(), '\n', ' ');
+
 	string sql;
-	bool   postgres = DBMode == DBModes::Postgres;
+
 	if (postgres) {
 		sql += "SET LOCAL synchronous_commit TO OFF; ";
+		sql += create;
 	} else {
+		time_t now    = time(nullptr);
 		string create = CreateSchemaSQL;
 		std::replace(create.begin(), create.end(), '\n', ' ');
 		sql += create + " ";
 		sql += "DELETE FROM readings WHERE time < ";
-		AddDbl(sql, Records[0].Time - 3 * 24 * 3600, false);
+		AddDbl(sql, now - 3 * 24 * 3600, false);
 		sql += "; ";
 	}
 	sql += "INSERT INTO readings (";
@@ -264,8 +290,9 @@ bool Monitor::CommitReadings() {
 	sql += "unknown1,";
 	sql += "heavy";
 	sql += ") VALUES ";
-	for (size_t i = 0; i < Records.size(); i++) {
-		const auto& r = Records[i];
+	uint32_t nRecords = Records.Size();
+	for (size_t i = 0; i < nRecords; i++) {
+		const auto& r = Records.Peek(i);
 		sql += "(";
 		if (postgres) {
 			sql += "to_timestamp(";
@@ -291,7 +318,7 @@ bool Monitor::CommitReadings() {
 		AddDbl(sql, r.Unknown1);
 		AddBool(sql, r.Heavy, false);
 		sql += ")";
-		if (i != Records.size() - 1)
+		if (i != nRecords - 1)
 			sql += ",";
 	}
 	// This happens every now and then.. maybe due to rounding error on the seconds.. I'm not actually sure.
@@ -299,7 +326,13 @@ bool Monitor::CommitReadings() {
 	//printf("Send:\n%s\n", sql.c_str());
 	string cmd;
 	if (postgres) {
-		cmd = "PGPASSWORD=homepower psql --host localhost --username pi --dbname power --command \"" + sql + "\"";
+		cmd = "PGPASSWORD=" + PostgresPassword +
+		      " psql " +
+		      " --host " + PostgresHost +
+		      " --username " + PostgresUsername +
+		      " --dbname " + PostgresDB +
+		      " --port " + PostgresPort +
+		      " --command \"" + sql + "\"";
 	} else {
 		cmd = "sqlite3 \"" + SQLiteFilename + "\" \"" + sql + "\"";
 	}

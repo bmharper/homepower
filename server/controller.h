@@ -86,7 +86,7 @@ public:
 	int       ChargeMinutes           = 60;                // If we detect that our battery is very low, then go back to charge mode for at least this long
 	TimePoint SolarOnAt               = TimePoint(7, 0);   // Ignore any solar voltage before this time
 	TimePoint SolarOffAt              = TimePoint(17, 30); // Ignore any solar voltage after this time
-	TimePoint TimerSUB                = TimePoint(16, 45); // Switch to SUB at this time
+	TimePoint TimerSUB                = TimePoint(17, 15); // Switch to SUB at this time
 	TimePoint TimerSBU                = TimePoint(22, 15); // Switch to SBU at this time
 	bool      EnablePowerSourceSwitch = false;             // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
 

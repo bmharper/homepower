@@ -25,8 +25,8 @@ struct History {
 
 class Monitor {
 public:
-	int                SampleWriteInterval   = 3;    // Write to database once every N samples (rate-limit to improve SSD endurance).
-	int                SecondsBetweenSamples = 2;    // Record data every N seconds
+	int                SampleWriteInterval   = 3;    // Write to database once every N samples (can be rate-limited to improve SSD endurance).
+	int                SecondsBetweenSamples = 1;    // Record data every N seconds
 	int                InverterSustainedW    = 5600; // Rated sustained output power of inverter
 	int                BatteryWh             = 4800; // Size of battery in watt-hours size of battery
 	int                GridVoltageThreshold  = 200;  // Grid voltage below this is considered "grid off"
@@ -35,7 +35,7 @@ public:
 	std::atomic<bool>  IsBatteryOverloaded;          // Signalled when we are drawing too much power from the battery
 	std::atomic<bool>  HasGridPower;                 // True if the grid is on
 	std::atomic<int>   SolarV;                       // Instantaneous solar voltage
-	std::atomic<int>   AvgSolarV;                    // Average solar voltage over last 10 seconds
+	std::atomic<int>   AvgSolarV;                    // Average solar voltage over last 60 seconds
 	std::atomic<float> BatteryV;                     // Battery voltage
 	std::atomic<float> BatteryP;                     // Battery charge percentage (0..100)
 

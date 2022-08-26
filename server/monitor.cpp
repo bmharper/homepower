@@ -65,7 +65,7 @@ Monitor::Monitor() {
 	BatteryP            = 0;
 	RecordNext          = 0; // Send one sample as soon as we come online
 
-	// If we can't talk to the DB, then we drop records
+	// If Records is full, and we can't talk to the DB, then we drop records.
 	// A record is 272 bytes, so 256 * 275 = about 64kb
 	Records.Initialize(256);
 
@@ -150,7 +150,7 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	GridVHistory.Add({now, r.ACInV});
 	SolarVHistory.Add({now, r.PvV});
 
-	AvgSolarV = Average(now - 10, SolarVHistory);
+	AvgSolarV = Average(now - 60, SolarVHistory);
 
 	LoadWHistory.Add({now, r.LoadW});
 	DeficitWHistory.Add({now, std::max(0.0f, r.LoadW - r.PvW)});

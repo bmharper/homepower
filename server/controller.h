@@ -81,8 +81,8 @@ public:
 	int       GpioPinInverter         = 18;                // GPIO/BCM pin number set to 1 when switching heavy loads to inverter
 	int       SwitchSleepMilliseconds = 10;                // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time, which is in ADDITION to this delay.
 	int       TimezoneOffsetMinutes   = 120;               // 120 = UTC+2 (Overridden by constructor)
-	int       MinSolarHeavyV          = 200;               // Minimum solar voltage before we'll put heavy loads on it
-	int       MinBatteryChargePercent = 20;                // Switch off heavy loads when battery gets this low
+	int       MinSolarHeavyV          = 180;               // Minimum solar voltage before we'll put heavy loads on it
+	int       MinBatteryChargePercent = 15;                // Switch off heavy loads when battery gets this low
 	int       ChargeMinutes           = 120;               // If we detect that our battery is very low, then go back to charge mode for at least this long
 	TimePoint SolarOnAt               = TimePoint(7, 0);   // Ignore any solar voltage before this time
 	TimePoint SolarOffAt              = TimePoint(17, 30); // Ignore any solar voltage after this time

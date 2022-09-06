@@ -88,6 +88,7 @@ public:
 	TimePoint SolarOffAt              = TimePoint(17, 30); // Ignore any solar voltage after this time
 	TimePoint TimerSUB                = TimePoint(17, 15); // Switch to SUB at this time
 	TimePoint TimerSBU                = TimePoint(21, 0);  // Switch to SBU at this time
+	bool      EnablePowerSourceTimer  = false;             // Respect TimerSUB and TimerSBU
 	bool      EnablePowerSourceSwitch = false;             // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
 
 	Controller(homepower::Monitor* monitor, bool enableGpio);

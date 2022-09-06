@@ -22,6 +22,7 @@ std::vector<std::string> split(const std::string& s, char delim) {
 int main(int argc, char** argv) {
 	bool               runController              = false;
 	bool               enablePowerSourceSwitching = false;
+	bool               enablePowerSourceTimer     = false;
 	bool               showHelp                   = false;
 	homepower::Monitor monitor;
 	int                defaultInverterWatts    = monitor.InverterSustainedW;
@@ -34,6 +35,9 @@ int main(int argc, char** argv) {
 			showHelp = true;
 		} else if (equals(arg, "-s")) {
 			enablePowerSourceSwitching = true;
+		} else if (equals(arg, "-t")) {
+			enablePowerSourceSwitching = true;
+			enablePowerSourceTimer     = true;
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
 			monitor.Inverter.Device = argv[i + 1];
 			i++;
@@ -78,6 +82,7 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
 		fprintf(stderr, " -c                Run controller, which switches heavy loads using GPIO pins 17 and 18\n");
 		fprintf(stderr, " -s                Enable source switching between SBU and SUB\n");
+		fprintf(stderr, " -t                Enable source switching between SBU and SUB on timer (implies -s)\n");
 		fprintf(stderr, " -o <watts>        Invert output power in watts. Default %d\n", defaultInverterWatts);
 		fprintf(stderr, " -b <watt-hours>   Size of battery in watt-hours. Default %d\n", defaultBatteryWattHours);
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
@@ -100,6 +105,7 @@ int main(int argc, char** argv) {
 	if (runController) {
 		homepower::Controller controller(&monitor, !debug);
 		controller.EnablePowerSourceSwitch = enablePowerSourceSwitching;
+		controller.EnablePowerSourceTimer  = enablePowerSourceTimer;
 		controller.SetHeavyLoadMode(homepower::HeavyLoadMode::Grid);
 		controller.Start();
 		ok = homepower::RunHttpServer(controller);

@@ -75,7 +75,7 @@ void Controller::Start() {
 	Thread   = thread([&]() {
         fprintf(stderr, "Controller started\n");
         fprintf(stderr, "EnablePowerSourceSwitch: %s\n", EnablePowerSourceSwitch ? "yes" : "no");
-        if (EnablePowerSourceSwitch) {
+        if (EnablePowerSourceSwitch && EnablePowerSourceTimer) {
             fprintf(stderr, "Switch to SUB at: %d:%02d\n", TimerSUB.Hour, TimerSUB.Minute);
             fprintf(stderr, "Switch to SBU at: %d:%02d\n", TimerSBU.Hour, TimerSBU.Minute);
         }
@@ -206,9 +206,9 @@ void Controller::Run() {
 			auto request = (PowerSource) ChangePowerSourceMsg.load();
 
 			// Note that these 'minute precision' checks will execute repeatedly for an entire minute
-			if (nowP.EqualsMinutePrecision(TimerSUB)) {
+			if (nowP.EqualsMinutePrecision(TimerSUB) && EnablePowerSourceTimer) {
 				desiredSource = PowerSource::SUB;
-			} else if (nowP.EqualsMinutePrecision(TimerSBU)) {
+			} else if (nowP.EqualsMinutePrecision(TimerSBU) && EnablePowerSourceTimer) {
 				desiredSource = PowerSource::SBU;
 			} else if (request != PowerSource::Unknown) {
 				desiredSource        = request;

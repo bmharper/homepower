@@ -165,7 +165,7 @@ void Controller::Run() {
 				// start charging
 				ChargeStartedAt = now;
 				desiredPMode    = HeavyLoadMode::Grid;
-				fprintf(stderr, "Battery is low, starting charge (switch off heavy loads)\n");
+				fprintf(stderr, "Battery is low, switch off heavy loads\n");
 			}
 		}
 
@@ -218,7 +218,7 @@ void Controller::Run() {
 				if (CurrentPowerSource == PowerSource::SBU && batteryP <= MinBatteryChargePercent) {
 					ChargeStartedAt = now;
 					desiredSource   = PowerSource::SUB;
-					fprintf(stderr, "Battery is low, starting charge (switch to SUB)\n");
+					fprintf(stderr, "Battery is low, switch to SUB\n");
 				}
 			}
 		}

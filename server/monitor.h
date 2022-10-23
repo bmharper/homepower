@@ -63,20 +63,27 @@ public:
 	bool RunInverterCmd(std::string cmd);
 
 private:
-	RingBuffer<Inverter::Record_QPIGS> Records;         // Records queued to be written into DB
+	std::mutex                         RecordsLock;     // Guards access to Records
+	RingBuffer<Inverter::Record_QPIGS> Records;         // Records queued to be written into DB. Guarded by RecordsLock
 	RingBuffer<History>                SolarVHistory;   // Solar voltage
 	RingBuffer<History>                LoadWHistory;    // Watts output by inverter
 	RingBuffer<History>                DeficitWHistory; // Watts that we needed to draw from the battery or the grid to meet load. This is LoadWatt - SolarWatt
 	RingBuffer<History>                SolarWHistory;   // Watts of solar power generated (could be going to battery or loads)
 	RingBuffer<History>                GridVHistory;    // Grid voltage (for detecting if grid is live or not)
+	RingBuffer<History>                BatVHistory;     // Battery voltage charge
+	RingBuffer<History>                BatPHistory;     // Battery percentage charge
 	std::thread                        Thread;
 	std::atomic<bool>                  MustExit;
-	int                                RecordNext = 0;
+	bool                               HasWrittenToDB = false;
+
+	//std::mutex                         DBThreadRecordsLock;
+	//RingBuffer<Inverter::Record_QPIGS> DBThreadRecords; // Records queued to be written into DB, and owned by the DB thread
 
 	void Run();
+	void DBThread();
 	bool ReadInverterStats(bool saveReading);
 	void UpdateStats(const Inverter::Record_QPIGS& r);
-	bool CommitReadings();
+	bool CommitReadings(RingBuffer<Inverter::Record_QPIGS>& records);
 };
 
 } // namespace homepower

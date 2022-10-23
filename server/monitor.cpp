@@ -63,7 +63,6 @@ Monitor::Monitor() {
 	CurrentPowerSource  = PowerSource::Unknown;
 	BatteryV            = 0;
 	BatteryP            = 0;
-	RecordNext          = 0; // Send one sample as soon as we come online
 
 	// If Records is full, and we can't talk to the DB, then we drop records.
 	// A record is 272 bytes, so 256 * 275 = about 64kb
@@ -76,6 +75,8 @@ Monitor::Monitor() {
 	DeficitWHistory.Initialize(256);
 	SolarWHistory.Initialize(256);
 	GridVHistory.Initialize(256);
+	BatPHistory.Initialize(256);
+	BatVHistory.Initialize(256);
 }
 
 void Monitor::Start() {
@@ -102,9 +103,15 @@ bool Monitor::RunInverterCmd(std::string cmd) {
 }
 
 void Monitor::Run() {
+	// Launch DB commit on a separate thread
+	auto dbThreadFunc = [this]() -> void {
+		this->DBThread();
+	};
+	auto dbThread = std::thread(dbThreadFunc);
+
 	auto lastSaveTime = 0;
 	while (!MustExit) {
-		bool saveReading = time(nullptr) - lastSaveTime > SecondsBetweenSamples;
+		bool saveReading = time(nullptr) - lastSaveTime >= SecondsBetweenSamples;
 		bool readOK      = false;
 		for (int attempt = 0; attempt < 3 && !MustExit; attempt++) {
 			readOK = ReadInverterStats(saveReading);
@@ -114,15 +121,37 @@ void Monitor::Run() {
 		if (readOK && saveReading) {
 			lastSaveTime = time(nullptr);
 		}
-		RecordNext--;
-		if (RecordNext <= 0 && Records.Size() != 0) {
-			if (CommitReadings()) {
-				Records.Clear();
-				RecordNext = SampleWriteInterval;
-			}
-		}
 		sleep(1);
 	};
+
+	dbThread.join();
+}
+
+// DBThread runs on a separate thread to the monitor system, so that if our DB
+// host goes down, we don't stall the monitoring.
+void Monitor::DBThread() {
+	// Our own queue. The ring buffer will automatically eat into it's tail
+	// if it gets too full, so we don't need to do anything special if
+	// we run out of private buffer space. The ring buffer will just drop
+	// the oldest samples.
+	RingBuffer<Inverter::Record_QPIGS> privateQueue;
+	privateQueue.Initialize(256);
+
+	while (!MustExit) {
+		// Suck records out of 'Records', and move them into our private queue.
+		RecordsLock.lock();
+		while (Records.Size() != 0) {
+			privateQueue.Add(Records.Next());
+		}
+		RecordsLock.unlock();
+
+		// As soon as we have enough samples (or we have just one sample, and we've just booted up), send records to the DB
+		if (privateQueue.Size() >= SampleWriteInterval || (privateQueue.Size() >= 1 && !HasWrittenToDB)) {
+			if (CommitReadings(privateQueue)) {
+				privateQueue.Clear();
+			}
+		}
+	}
 }
 
 bool Monitor::ReadInverterStats(bool saveReading) {
@@ -136,12 +165,19 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 		return false;
 	}
 	record.Heavy = IsHeavyOnInverter;
-	if (saveReading)
+	if (saveReading) {
+		RecordsLock.lock();
 		Records.Add(record);
+		RecordsLock.unlock();
+	}
 	UpdateStats(record);
 	return true;
 }
 
+// We need to be careful to filter out sporadic zero readings, which happen
+// about once every two weeks or so. Initially, I would trust BatP's instantanous
+// reading, but when it drops to zero for a single sample, then our controller
+// freaks out and switches to charge mode.
 void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	IsInitialized = true;
 
@@ -149,6 +185,8 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 
 	GridVHistory.Add({now, r.ACInV});
 	SolarVHistory.Add({now, r.PvV});
+	BatPHistory.Add({now, r.BatP});
+	BatVHistory.Add({now, r.BatV});
 
 	AvgSolarV = Average(now - 60, SolarVHistory);
 
@@ -156,6 +194,10 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	DeficitWHistory.Add({now, std::max(0.0f, r.LoadW - r.PvW)});
 
 	SolarWHistory.Add({now, r.PvW});
+
+	float filteredSolarV = Maximum(now - 5, SolarVHistory);
+	float filteredBatP   = Maximum(now - 10, BatPHistory);
+	float filteredBatV   = Maximum(now - 10, BatVHistory);
 
 	// These numbers are roughly drawn from my Voltronic 5.6kw MKS 4 inverter (aka MKS IV),
 	// but tweaked to be more conservative.
@@ -194,9 +236,9 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	// sample, and we don't want those blips to cause us to change state.
 	HasGridPower = (float) Maximum(now - 5, GridVHistory) > (float) GridVoltageThreshold;
 
-	SolarV   = (int) r.PvV;
-	BatteryV = r.BatV;
-	BatteryP = r.BatP;
+	SolarV   = (int) filteredSolarV;
+	BatteryV = filteredBatV;
+	BatteryP = filteredBatP;
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);
@@ -248,8 +290,8 @@ CREATE TABLE IF NOT EXISTS readings (
 );
 )";
 
-bool Monitor::CommitReadings() {
-	if (Records.Size() == 0)
+bool Monitor::CommitReadings(RingBuffer<Inverter::Record_QPIGS>& records) {
+	if (records.Size() == 0)
 		return true;
 
 	bool postgres = DBMode == DBModes::Postgres;
@@ -261,12 +303,13 @@ bool Monitor::CommitReadings() {
 
 	if (postgres) {
 		sql += "SET LOCAL synchronous_commit TO OFF; ";
-		sql += create;
+		if (!HasWrittenToDB)
+			sql += create;
 	} else {
-		time_t now    = time(nullptr);
-		string create = CreateSchemaSQL;
-		std::replace(create.begin(), create.end(), '\n', ' ');
-		sql += create + " ";
+		time_t now = time(nullptr);
+		if (!HasWrittenToDB)
+			sql += create + " ";
+		// We assume that our SQLite DB is on a ramdisk, so we limit it's size
 		sql += "DELETE FROM readings WHERE time < ";
 		AddDbl(sql, now - 3 * 24 * 3600, false);
 		sql += "; ";
@@ -290,9 +333,9 @@ bool Monitor::CommitReadings() {
 	sql += "unknown1,";
 	sql += "heavy";
 	sql += ") VALUES ";
-	uint32_t nRecords = Records.Size();
+	uint32_t nRecords = records.Size();
 	for (size_t i = 0; i < nRecords; i++) {
-		const auto& r = Records.Peek(i);
+		const auto& r = records.Peek(i);
 		sql += "(";
 		if (postgres) {
 			sql += "to_timestamp(";
@@ -336,7 +379,11 @@ bool Monitor::CommitReadings() {
 	} else {
 		cmd = "sqlite3 \"" + SQLiteFilename + "\" \"" + sql + "\"";
 	}
-	return system(cmd.c_str()) == 0;
+	bool dbWriteOK = system(cmd.c_str()) == 0;
+	if (dbWriteOK) {
+		HasWrittenToDB = true;
+	}
+	return dbWriteOK;
 }
 
 } // namespace homepower

@@ -85,7 +85,7 @@ public:
 	int       MinBatteryChargePercent = 20;                // Switch off heavy loads and switch to SUB when battery gets this low
 	int       ChargeMinutes           = 120;               // If we detect that our battery is very low, then go back to charge mode for at least this long
 	TimePoint SolarOnAt               = TimePoint(7, 0);   // Ignore any solar voltage before this time
-	TimePoint SolarOffAt              = TimePoint(17, 30); // Ignore any solar voltage after this time
+	TimePoint SolarOffAt              = TimePoint(16, 45); // Ignore any solar voltage after this time
 	TimePoint TimerSUB                = TimePoint(17, 15); // Switch to SUB at this time
 	TimePoint TimerSBU                = TimePoint(21, 0);  // Switch to SBU at this time
 	bool      EnablePowerSourceTimer  = false;             // Respect TimerSUB and TimerSBU

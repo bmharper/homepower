@@ -47,11 +47,15 @@ struct TimePoint {
 // A key reason why this exists is because we have imperfect knowledge.
 // We don't know how much power is going to be used by
 // the optional circuits until we flip them on.
+// For definitions, we think of a conservative state and an optimistic state.
+// When we think all is quiet, then we switch to the optimistic state. Only after doing that,
+// can we detect that we might have been wrong. Every time we're forced to switch
+// from our optimistic state back to our conservative state, we double the cooloff period.
 struct Cooloff {
 	time_t DefaultCooloffPeriod = 60;      // When we think things are stable, then cooloff period returns to Default
 	time_t CooloffPeriod        = 60;      // Current backoff time
 	time_t MaxCooloffPeriod     = 60 * 15; // Maximum backoff time
-	time_t LastAlarm            = 0;       // Last time that we switched, or wanted to be in the undesired state
+	time_t LastAlarm            = 0;       // Last time that we needed to switch to the conservative state
 
 	// Inform the system that everything appears to be fine
 	void SignalFine(time_t now) {
@@ -62,7 +66,7 @@ struct Cooloff {
 		}
 	}
 
-	// Inform the system that we're in an alarm state
+	// Inform the system that we've needed to switch back to the conservative state (i.e. our optimism was wrong)
 	void SignalAlarm(time_t now) {
 		LastAlarm     = now;
 		CooloffPeriod = std::min(CooloffPeriod * 2, MaxCooloffPeriod);
@@ -90,6 +94,12 @@ public:
 	TimePoint TimerSBU                = TimePoint(21, 0);  // Switch to SBU at this time
 	bool      EnablePowerSourceTimer  = false;             // Respect TimerSUB and TimerSBU
 	bool      EnablePowerSourceSwitch = false;             // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
+
+	// If true, then we keep heavy loads on even if we have no solar power (but we'll still switch them off if overloaded).
+	// This is useful for stormy days where we're running on SUB mode, because there's no solar,
+	// but we still want to be able to run the washing machine, and auxiliary plugs. This is a manually
+	// invoked mode, and default off.
+	std::atomic<bool> KeepHeavyOnWithoutSolar;
 
 	Controller(homepower::Monitor* monitor, bool enableGpio);
 	~Controller();

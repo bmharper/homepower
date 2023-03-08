@@ -38,9 +38,10 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio) {
 	// I'm sure there is a way to read the state using other mechanisms, but I don't
 	// have any need for that, because this server is intended to come on and stay
 	// on for months, without a restart.
-	Monitor    = monitor;
-	MustExit   = false;
-	EnableGpio = enableGpio;
+	Monitor                 = monitor;
+	MustExit                = false;
+	KeepHeavyOnWithoutSolar = false;
+	EnableGpio              = enableGpio;
 	if (EnableGpio) {
 		if (bcm2835_init() == 0) {
 			fprintf(stderr, "bcm2835_init failed\n");
@@ -144,10 +145,10 @@ void Controller::Run() {
 	auto lastStatus   = 0;
 	auto lastPVStatus = 0;
 	while (!MustExit) {
-		time_t        now           = time(nullptr);
-		auto          nowP          = Now();
-		HeavyLoadMode desiredPMode  = HeavyLoadMode::Grid;
-		PowerSource   desiredSource = PowerSource::SUB;
+		time_t        now              = time(nullptr);
+		auto          nowP             = Now();
+		HeavyLoadMode desiredHeavyMode = HeavyLoadMode::Grid;
+		PowerSource   desiredSource    = PowerSource::SUB;
 
 		bool monitorIsAlive  = Monitor->IsInitialized;
 		bool isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
@@ -155,28 +156,33 @@ void Controller::Run() {
 		int  batteryP        = (int) Monitor->BatteryP;
 		bool hasGridPower    = Monitor->HasGridPower;
 		bool haveSolarHeavyV = solarV > MinSolarHeavyV;
+
+		if (monitorIsAlive && !Monitor->IsBatteryOverloaded && !Monitor->IsOutputOverloaded && KeepHeavyOnWithoutSolar.load()) {
+			desiredHeavyMode = HeavyLoadMode::Inverter;
+		}
+
 		if (monitorIsAlive && !Monitor->IsBatteryOverloaded && !Monitor->IsOutputOverloaded && isSolarTime && haveSolarHeavyV) {
-			desiredPMode = HeavyLoadMode::Inverter;
+			desiredHeavyMode = HeavyLoadMode::Inverter;
 
 			if (now - ChargeStartedAt < ChargeMinutes * 60) {
 				// we're still busy charging
-				desiredPMode = HeavyLoadMode::Grid;
+				desiredHeavyMode = HeavyLoadMode::Grid;
 			} else if (batteryP <= MinBatteryChargePercent) {
 				// start charging
-				ChargeStartedAt = now;
-				desiredPMode    = HeavyLoadMode::Grid;
+				ChargeStartedAt  = now;
+				desiredHeavyMode = HeavyLoadMode::Grid;
 				fprintf(stderr, "Battery is low, switch off heavy loads\n");
 			}
 		}
 
-		if (desiredPMode != HeavyLoadMode::Inverter) {
+		if (desiredHeavyMode != HeavyLoadMode::Inverter) {
 			if (!hasGridPower) {
 				// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
 				// This prevents them from being subject to a spike when the grid is switched back on again.
 				// We assume that this grid spike only lasts a few milliseconds, and by the time we've detected
 				// that the grid is back on, the spike has subsided. In other words, we make no attempt to add
 				// an extra delay before switching the grid back on.
-				desiredPMode = HeavyLoadMode::Off;
+				desiredHeavyMode = HeavyLoadMode::Off;
 			}
 
 			if (monitorIsAlive && now - lastStatus > 10 * 60) {
@@ -252,15 +258,15 @@ void Controller::Run() {
 		if (desiredSource == PowerSource::SBU)
 			SourceCooloff.SignalFine(now);
 
-		if (desiredPMode != CurrentHeavyLoadMode) {
-			if (desiredPMode == HeavyLoadMode::Grid || desiredPMode == HeavyLoadMode::Off || HeavyCooloff.IsGood(now)) {
-				if (desiredPMode != HeavyLoadMode::Inverter)
+		if (desiredHeavyMode != CurrentHeavyLoadMode) {
+			if (desiredHeavyMode == HeavyLoadMode::Grid || desiredHeavyMode == HeavyLoadMode::Off || HeavyCooloff.IsGood(now)) {
+				if (desiredHeavyMode != HeavyLoadMode::Inverter)
 					HeavyCooloff.SignalAlarm(now);
-				SetHeavyLoadMode(desiredPMode);
+				SetHeavyLoadMode(desiredHeavyMode);
 			}
 		}
 
-		if (desiredPMode == HeavyLoadMode::Inverter)
+		if (desiredHeavyMode == HeavyLoadMode::Inverter)
 			HeavyCooloff.SignalFine(now);
 
 		int millisecond = 1000;

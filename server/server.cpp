@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
 
 	// The following line is useful when developing offline
 	// Also, uncomment lines at the top of makefile, to enable debug info.
-	bool debug = true;
+	bool debug = false;
 
 	if (debug)
 		monitor.Inverter.DebugResponseFile = "/home/ben/tmp/qpigs.txt";

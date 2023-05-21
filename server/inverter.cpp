@@ -288,9 +288,9 @@ bool Inverter::Open() {
 			Close();
 			return false;
 		}
-		cfmakeraw(&settings);        // It's vital to set this to RAW mode (instead of LINE)
-		settings.c_cflag &= ~PARENB; // no parity
-		settings.c_cflag &= ~CSTOPB; // 1 stop bit
+		cfmakeraw(&settings);             // It's vital to set this to RAW mode (instead of LINE)
+		settings.c_cflag &= ~PARENB;      // no parity
+		settings.c_cflag &= ~CSTOPB;      // 1 stop bit
 		settings.c_cflag &= ~CSIZE;
 		settings.c_cflag |= CS8 | CLOCAL; // 8 bits
 		// settings.c_lflag = ICANON;         // canonical mode
@@ -327,6 +327,7 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 	if (DebugResponseFile != "") {
 		FILE* f = fopen(DebugResponseFile.c_str(), "rb");
 		if (!f) {
+			fprintf(stderr, "Inverter::Execute() returning FailOpenFile because DebugResponseFile is '%s'\n", DebugResponseFile.c_str());
 			response = "Failed to open debug file " + DebugResponseFile;
 			return Response::FailOpenFile;
 		}
@@ -342,8 +343,10 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 	}
 
 	if (FD == -1) {
-		if (!Open())
+		if (!Open()) {
+			fprintf(stderr, "Inverter::Open() failed\n");
 			return Response::FailOpenFile;
+		}
 	}
 
 	auto res = Response::DontUnderstand;

@@ -181,8 +181,9 @@ void Controller::ChangePowerSource(PowerSource source) {
 }
 
 void Controller::Run() {
-	auto lastStatus   = 0;
-	auto lastPVStatus = 0;
+	auto lastStatus    = 0;
+	auto lastChargeMsg = 0;
+	auto lastPVStatus  = 0;
 	while (!MustExit) {
 		time_t        now              = time(nullptr);
 		auto          nowP             = Now();
@@ -261,14 +262,21 @@ void Controller::Run() {
 			// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time.
 			// We add the batteryP >= 100 criteria to ensure that we give the BMS a chance to equalize the battery cells
 			// at least once a day.
-			bool endOfDayOK = batteryP >= 100 && nowP.Hour >= 5;
+			bool endOfDayOK = batteryP >= 100 && (nowP.Hour >= 17 || nowP.Hour <= 7);
 
-			if (CurrentPowerSource == PowerSource::SBU && batteryP < goalBatteryP) {
+			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
+				lastChargeMsg = now;
+				fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s\n",
+				        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, solarW, loadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no");
+				fflush(stderr);
+			}
+
+			if (CurrentPowerSource != PowerSource::SUB && batteryP < goalBatteryP) {
 				// Our battery is too low - switch to SUB
 				fprintf(stderr, "Battery is low (%d < %d), switching to SUB\n", batteryP, goalBatteryP);
 				ChargeStartedInHour = nowP.Hour;
 				desiredSource       = PowerSource::SUB;
-			} else if (CurrentPowerSource == PowerSource::SUB && batteryP >= goalBatteryP && (earlyInDayOK || lateInDayOK || endOfDayOK)) {
+			} else if (CurrentPowerSource != PowerSource::SBU && batteryP >= goalBatteryP && (earlyInDayOK || lateInDayOK || endOfDayOK)) {
 				// We are charged enough - switch to SBU.
 				// Note that we only switch back to SBU once we're either fully charge at the end of the day, or we have
 				// enough solar power to power our average daily loads. Without these final conditions, we would flip flop

@@ -1,3 +1,4 @@
+#include <string.h>
 #include "commands.h"
 
 namespace homepower {
@@ -29,4 +30,22 @@ const char* ChargerPriorityToString(ChargerPriority v) {
 	}
 }
 
+const char* TriStateToString(TriState s) {
+	switch (s) {
+	case TriState::Off: return "Off";
+	case TriState::On: return "On";
+	case TriState::Auto: return "Auto";
+	}
 }
+
+TriState ParseTriState(const char* s) {
+	if (strcmp(s, "Off") == 0)
+		return TriState::Off;
+	if (strcmp(s, "On") == 0)
+		return TriState::On;
+	if (strcmp(s, "Auto") == 0)
+		return TriState::Auto;
+	return TriState::Auto;
+}
+
+} // namespace homepower

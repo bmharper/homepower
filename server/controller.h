@@ -83,17 +83,18 @@ public:
 	bool      EnableGpio              = true;              // This can be disabled for debugging
 	int       GpioPinGrid             = 17;                // GPIO/BCM pin number set to 1 when switching heavy loads to grid
 	int       GpioPinInverter         = 18;                // GPIO/BCM pin number set to 1 when switching heavy loads to inverter
-	int       SwitchSleepMilliseconds = 10;                // 50hz = 20ms cycle time. Hager ESC225 have 25ms switch off time, and 10ms switch on time, which is in ADDITION to this delay.
+	int       SwitchSleepMilliseconds = 10;                // 50hz = 20ms cycle time. Hager ESC225 have 25ms closing delay, and 15ms opening delay.
 	int       TimezoneOffsetMinutes   = 120;               // 120 = UTC+2 (Overridden by constructor)
 	int       MinSolarHeavyV          = 180;               // Minimum solar voltage before we'll put heavy loads on it
 	int       MinBatteryChargePercent = 20;                // Switch off heavy loads and switch to SUB when battery gets this low
 	int       ChargeMinutes           = 120;               // If we detect that our battery is very low, then go back to charge mode for at least this long
 	TimePoint SolarOnAt               = TimePoint(7, 0);   // Ignore any solar voltage before this time
 	TimePoint SolarOffAt              = TimePoint(16, 45); // Ignore any solar voltage after this time
-	TimePoint TimerSUB                = TimePoint(17, 15); // Switch to SUB at this time
-	TimePoint TimerSBU                = TimePoint(21, 0);  // Switch to SBU at this time
-	bool      EnablePowerSourceTimer  = false;             // Respect TimerSUB and TimerSBU
-	bool      EnablePowerSourceSwitch = false;             // Enable switching between SBU and SUB. My VM III generally runs cooler when in SBU mode.
+	//TimePoint TimerSUB                = TimePoint(17, 15); // Switch to SUB at this time
+	//TimePoint TimerSBU                = TimePoint(21, 0);  // Switch to SBU at this time
+	//bool      EnablePowerSourceTimer  = false;             // Respect TimerSUB and TimerSBU
+	bool EnableAutoCharge = false; // Enable switching between SBU and SUB depending on battery charge
+	int  MinBattery[24]   = {};    // Minimum battery charge percentage in any hour of the day (value from 0 to 100)
 
 	// If true, then we keep heavy loads on even if we have no solar power (but we'll still switch them off if overloaded).
 	// This is useful for stormy days where we're running on SUB mode, because there's no solar,
@@ -118,7 +119,8 @@ private:
 	Cooloff           HeavyCooloff;
 	std::mutex        HeavyLoadLock;        // Guards access to SetHeavyLoadMode
 	std::atomic<int>  ChangePowerSourceMsg; // Used by HTTP to signal to controller thread to change power source
-	time_t            ChargeStartedAt = 0;  // Moment when we decided that we needed to start charging again
+	//time_t            ChargeStartedAt = 0;  // Moment when we decided that we needed to start charging again
+	int ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
 
 	void      Run();
 	TimePoint Now();

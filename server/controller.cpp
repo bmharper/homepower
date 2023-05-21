@@ -8,6 +8,15 @@ using namespace std;
 
 namespace homepower {
 
+template <typename T>
+T Clamp(T v, T vmin, T vmax) {
+	if (v < vmin)
+		return vmin;
+	if (v > vmax)
+		return vmax;
+	return v;
+}
+
 const char* ModeToString(HeavyLoadMode mode) {
 	switch (mode) {
 	case HeavyLoadMode::Off: return "Off";
@@ -26,8 +35,8 @@ TimePoint TimePoint::Now(int timezoneOffsetMinutes) {
 		sec += 24 * 3600;
 	sec = sec % (24 * 3600);
 	TimePoint tp;
-	tp.Hour   = sec / 3600;
-	tp.Minute = (sec - tp.Hour * 3600) / 60;
+	tp.Hour   = Clamp(sec / 3600, 0, 23);
+	tp.Minute = Clamp((sec - tp.Hour * 3600) / 60, 0, 59);
 	return tp;
 }
 
@@ -55,6 +64,31 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio) {
 	CurrentHeavyLoadMode = HeavyLoadMode::Off;
 	ChangePowerSourceMsg = (int) PowerSource::Unknown;
 
+	MinBattery[0]  = 45;
+	MinBattery[1]  = 40;
+	MinBattery[2]  = 35;
+	MinBattery[3]  = 35;
+	MinBattery[4]  = 35;
+	MinBattery[5]  = 35;
+	MinBattery[6]  = 35;
+	MinBattery[7]  = 35;
+	MinBattery[8]  = 35;
+	MinBattery[9]  = 38; // On a sunny winter's day, our charge only increases by 3 percent from 8:20 (first direct sunlight) to 9:00.
+	MinBattery[10] = 45;
+	MinBattery[11] = 50;
+	MinBattery[12] = 60;
+	MinBattery[13] = 70;
+	MinBattery[14] = 80;
+	MinBattery[15] = 90;
+	MinBattery[16] = 92;
+	MinBattery[17] = 90;
+	MinBattery[18] = 85;
+	MinBattery[19] = 70;
+	MinBattery[20] = 65;
+	MinBattery[21] = 60;
+	MinBattery[22] = 55;
+	MinBattery[23] = 50;
+
 	time_t    t  = time(NULL);
 	struct tm lt = {0};
 	localtime_r(&t, &lt);
@@ -75,11 +109,16 @@ void Controller::Start() {
 	MustExit = false;
 	Thread   = thread([&]() {
         fprintf(stderr, "Controller started\n");
-        fprintf(stderr, "EnablePowerSourceSwitch: %s\n", EnablePowerSourceSwitch ? "yes" : "no");
-        if (EnablePowerSourceSwitch && EnablePowerSourceTimer) {
-            fprintf(stderr, "Switch to SUB at: %d:%02d\n", TimerSUB.Hour, TimerSUB.Minute);
-            fprintf(stderr, "Switch to SBU at: %d:%02d\n", TimerSBU.Hour, TimerSBU.Minute);
+        fprintf(stderr, "Auto charge: %s\n", EnableAutoCharge ? "yes" : "no");
+        if (EnableAutoCharge) {
+            fprintf(stderr, "Minimum battery charge percentage for each hour:\n");
+            for (int i = 0; i < 24; i++)
+                fprintf(stderr, "  %02dh: %02d%%\n", i, MinBattery[i]);
         }
+        //if (EnablePowerSourceSwitch && EnablePowerSourceTimer) {
+        //    fprintf(stderr, "Switch to SUB at: %d:%02d\n", TimerSUB.Hour, TimerSUB.Minute);
+        //    fprintf(stderr, "Switch to SBU at: %d:%02d\n", TimerSBU.Hour, TimerSBU.Minute);
+        //}
         Run();
         fprintf(stderr, "Controller exited\n");
     });
@@ -150,83 +189,110 @@ void Controller::Run() {
 		HeavyLoadMode desiredHeavyMode = HeavyLoadMode::Grid;
 		PowerSource   desiredSource    = PowerSource::SUB;
 
-		bool monitorIsAlive  = Monitor->IsInitialized;
-		bool isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
-		int  solarV          = Monitor->AvgSolarV;
-		int  batteryP        = (int) Monitor->BatteryP;
-		bool hasGridPower    = Monitor->HasGridPower;
-		bool haveSolarHeavyV = solarV > MinSolarHeavyV;
+		bool  monitorIsAlive  = Monitor->IsInitialized;
+		bool  isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
+		int   solarV          = Monitor->AvgSolarV;
+		int   batteryP        = (int) Monitor->BatteryP;
+		bool  hasGridPower    = Monitor->HasGridPower;
+		bool  haveSolarHeavyV = solarV > MinSolarHeavyV;
+		float solarW          = Monitor->AvgSolarW;
+		float loadW           = Monitor->AvgLoadW;
 
-		if (monitorIsAlive && !Monitor->IsBatteryOverloaded && !Monitor->IsOutputOverloaded && KeepHeavyOnWithoutSolar.load()) {
-			desiredHeavyMode = HeavyLoadMode::Inverter;
-		}
+		TriState heavyLoadDesired = TriState::Auto;
+		if (KeepHeavyOnWithoutSolar.load())
+			heavyLoadDesired = TriState::On;
 
-		if (monitorIsAlive && !Monitor->IsBatteryOverloaded && !Monitor->IsOutputOverloaded && isSolarTime && haveSolarHeavyV) {
-			desiredHeavyMode = HeavyLoadMode::Inverter;
-
-			if (now - ChargeStartedAt < ChargeMinutes * 60) {
-				// we're still busy charging
-				desiredHeavyMode = HeavyLoadMode::Grid;
-			} else if (batteryP <= MinBatteryChargePercent) {
-				// start charging
-				ChargeStartedAt  = now;
-				desiredHeavyMode = HeavyLoadMode::Grid;
-				fprintf(stderr, "Battery is low, switch off heavy loads\n");
-			}
-		}
-
-		if (desiredHeavyMode != HeavyLoadMode::Inverter) {
-			if (!hasGridPower) {
-				// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
-				// This prevents them from being subject to a spike when the grid is switched back on again.
-				// We assume that this grid spike only lasts a few milliseconds, and by the time we've detected
-				// that the grid is back on, the spike has subsided. In other words, we make no attempt to add
-				// an extra delay before switching the grid back on.
+		if (monitorIsAlive && !Monitor->IsBatteryOverloaded && !Monitor->IsOutputOverloaded) {
+			switch (heavyLoadDesired) {
+			case TriState::On:
+				desiredHeavyMode = HeavyLoadMode::Inverter;
+				break;
+			case TriState::Off:
 				desiredHeavyMode = HeavyLoadMode::Off;
-			}
-
-			if (monitorIsAlive && now - lastStatus > 10 * 60) {
-				lastStatus = now;
-				fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
-				        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarHeavyV ? "yes" : "no",
-				        Monitor->IsOutputOverloaded ? "yes" : "no",
-				        Monitor->IsBatteryOverloaded ? "yes" : "no",
-				        nowP.Hour, nowP.Minute);
-				fflush(stderr);
+				break;
+			case TriState::Auto:
+				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
+				break;
 			}
 		}
 
-		// New logic, since I have 4.5 kWh of LiFePO batteries (Pylontech UP5000).
-		// In this case, we want to switch to grid power between sundown and *some night time*. Then, we're on battery mode all through that night,
-		// and all through the next day, until sundown comes again.
-		// Note that unlike all the rest of our logic, which is stateless... this logic is stateful.
-		// We only emit a decision DURING THE MINUTE when the switch it supposed to happen.
-		// The reason I do it like this, is so that I can walk to my inverter and manually change it
-		// for whatever reason (eg I am gaming late at night, or I know that it's going to rain the next
-		// morning, and/or there's lots of load shedding).
+		if (desiredHeavyMode == HeavyLoadMode::Grid && !hasGridPower) {
+			// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
+			// This prevents them from being subject to a spike when the grid is switched back on again.
+			// We assume that this grid spike only lasts a few milliseconds, and by the time we've detected
+			// that the grid is back on, the spike has subsided. In other words, we make no attempt to add
+			// an extra delay before switching the contactors back on. Our polling interval adds enough delay.
+			desiredHeavyMode = HeavyLoadMode::Off;
+		}
+
+		if (monitorIsAlive && now - lastStatus > 10 * 60) {
+			lastStatus = now;
+			fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
+			        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarHeavyV ? "yes" : "no",
+			        Monitor->IsOutputOverloaded ? "yes" : "no",
+			        Monitor->IsBatteryOverloaded ? "yes" : "no",
+			        nowP.Hour, nowP.Minute);
+			fflush(stderr);
+		}
+
+		// Figure out whether we should be charging from grid or not
 		desiredSource = CurrentPowerSource;
 
-		if (EnablePowerSourceSwitch) {
-			// Check if we have a 'please change to X mode' request from our HTTP server
-			// This is sloppy use of an atomic variable, but our needs are simple.
-			auto request = (PowerSource) ChangePowerSourceMsg.load();
-
-			// Note that these 'minute precision' checks will execute repeatedly for an entire minute
-			if (nowP.EqualsMinutePrecision(TimerSUB) && EnablePowerSourceTimer) {
-				desiredSource = PowerSource::SUB;
-			} else if (nowP.EqualsMinutePrecision(TimerSBU) && EnablePowerSourceTimer) {
-				desiredSource = PowerSource::SBU;
-			} else if (request != PowerSource::Unknown) {
-				desiredSource        = request;
-				ChangePowerSourceMsg = (int) PowerSource::Unknown; // signal that we've made the desired change
-			} else {
-				// If battery is too low, then switch back to SUB
-				if (CurrentPowerSource == PowerSource::SBU && batteryP <= MinBatteryChargePercent) {
-					ChargeStartedAt = now;
-					desiredSource   = PowerSource::SUB;
-					fprintf(stderr, "Battery is low, switch to SUB\n");
-				}
+		if (monitorIsAlive && EnableAutoCharge) {
+			int goalBatteryP = MinBattery[nowP.Hour];
+			if (ChargeStartedInHour == nowP.Hour) {
+				// If we hit our trigger low battery threshold, then charge up until we're at least 5% above the trigger threshold,
+				// and until we're charged up enough to not hit the charge threshold on the next hour.
+				int currentPlus5 = min(100, MinBattery[nowP.Hour] + 5);
+				int nextHour     = (nowP.Hour + 1) % 24;
+				goalBatteryP     = max(currentPlus5, MinBattery[nextHour]);
 			}
+
+			// A key thing about the voltronic MKS inverters is that once the battery is charged, and they're in SUB mode,
+			// then they no longer use the solar power for anything besides running the inverter itself (around 50W).
+			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
+
+			// Here we're hopeful that the sun will shine even more.
+			bool earlyInDayOK = nowP.Hour < 12 && solarW >= loadW * 1.1;
+
+			// Here we have a good amount of charge, and don't want to dump solar power just because our battery is full.
+			bool lateInDayOK = batteryP >= 95 && nowP.Hour >= 12 && solarW >= loadW * 0.9f;
+
+			// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time.
+			// We add the batteryP >= 100 criteria to ensure that we give the BMS a chance to equalize the battery cells
+			// at least once a day.
+			bool endOfDayOK = batteryP >= 100 && nowP.Hour >= 5;
+
+			if (CurrentPowerSource == PowerSource::SBU && batteryP < goalBatteryP) {
+				// Our battery is too low - switch to SUB
+				fprintf(stderr, "Battery is low (%d < %d), switching to SUB\n", batteryP, goalBatteryP);
+				ChargeStartedInHour = nowP.Hour;
+				desiredSource       = PowerSource::SUB;
+			} else if (CurrentPowerSource == PowerSource::SUB && batteryP >= goalBatteryP && (earlyInDayOK || lateInDayOK || endOfDayOK)) {
+				// We are charged enough - switch to SBU.
+				// Note that we only switch back to SBU once we're either fully charge at the end of the day, or we have
+				// enough solar power to power our average daily loads. Without these final conditions, we would flip flop
+				// between SBU and SUB on a rainy day.
+				fprintf(stderr, "Battery is sufficient (%d >= %d) (SolarW = %.1f, LoadW = %.1f), switching to SBU\n", batteryP, goalBatteryP, solarW, loadW);
+				ChargeStartedInHour = -1;
+				desiredSource       = PowerSource::SBU;
+			}
+		}
+
+		// Check if we have a 'please change to X mode' request from our HTTP server
+		// This is sloppy use of an atomic variable, but our needs are simple.
+		auto specialRequest = (PowerSource) ChangePowerSourceMsg.load();
+
+		// Note that these 'minute precision' checks will execute repeatedly for an entire minute
+		//if (nowP.EqualsMinutePrecision(TimerSUB) && EnablePowerSourceTimer) {
+		//	desiredSource = PowerSource::SUB;
+		//} else if (nowP.EqualsMinutePrecision(TimerSBU) && EnablePowerSourceTimer) {
+		//	desiredSource = PowerSource::SBU;
+		//} else if (request != PowerSource::Unknown) {
+		if (specialRequest != PowerSource::Unknown) {
+			desiredSource        = specialRequest;
+			ChargeStartedInHour  = -1;
+			ChangePowerSourceMsg = (int) PowerSource::Unknown; // signal that we've made the desired change (aka reset the atomic toggle)
 		}
 
 		// NOTE: I am disabling SourceCooloff, now that I have a 4.8 kwh lithium ion battery.

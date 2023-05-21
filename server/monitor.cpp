@@ -57,12 +57,14 @@ Monitor::Monitor() {
 	IsBatteryOverloaded = false;
 	HasGridPower        = true;
 	SolarV              = 0;
+	AvgSolarW           = 0;
 	AvgSolarV           = 0;
 	MustExit            = false;
 	IsHeavyOnInverter   = false;
 	CurrentPowerSource  = PowerSource::Unknown;
 	BatteryV            = 0;
 	BatteryP            = 0;
+	AvgLoadW            = 0;
 
 	// If Records is full, and we can't talk to the DB, then we drop records.
 	// A record is 272 bytes, so 256 * 275 = about 64kb
@@ -195,9 +197,9 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 
 	SolarWHistory.Add({now, r.PvW});
 
-	float filteredSolarV = Maximum(now - 5, SolarVHistory);
-	float filteredBatP   = Maximum(now - 10, BatPHistory);
-	float filteredBatV   = Maximum(now - 10, BatVHistory);
+	float filteredSolarV = Maximum(now - 15, SolarVHistory);
+	float filteredBatP   = Maximum(now - 30, BatPHistory);
+	float filteredBatV   = Maximum(now - 30, BatVHistory);
 
 	// These numbers are roughly drawn from my Voltronic 5.6kw MKS 4 inverter (aka MKS IV),
 	// but tweaked to be more conservative.
@@ -215,9 +217,9 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	//printf("Output:  %4.0f %4.0f %4.0f vs %4.0f %4.0f %4.0f, Overloaded: %s\n", Average(now - 10, LoadWHistory), Average(now - 5, LoadWHistory), r.LoadW,
 	//       (float) InverterSustainedW * 0.97f, (float) InverterSustainedW * 1.3f, (float) InverterSustainedW * 1.7f, outputOverload ? "yes" : "no");
 
-	// These numbers are drawn from my Pylontech UP5000 battery
+	// These numbers are drawn from my Pylontech UP5000 battery, with a discharge C of about 0.5
 	bool batteryOverloaded = false;
-	if (Average(now - 4 * 60, DeficitWHistory) > (float) BatteryWh * 0.5f) {
+	if (Average(now - 2 * 60, DeficitWHistory) > (float) BatteryWh * 0.5f) {
 		batteryOverloaded = true;
 	} else if (Average(now - 60, DeficitWHistory) > (float) BatteryWh * 0.9f) {
 		batteryOverloaded = true;
@@ -236,9 +238,11 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	// sample, and we don't want those blips to cause us to change state.
 	HasGridPower = (float) Maximum(now - 5, GridVHistory) > (float) GridVoltageThreshold;
 
-	SolarV   = (int) filteredSolarV;
-	BatteryV = filteredBatV;
-	BatteryP = filteredBatP;
+	SolarV    = (int) filteredSolarV;
+	BatteryV  = filteredBatV;
+	BatteryP  = filteredBatP;
+	AvgSolarW = Average(now - 60, SolarWHistory);
+	AvgLoadW  = Average(now - 60, LoadWHistory);
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);

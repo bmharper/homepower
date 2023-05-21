@@ -20,10 +20,10 @@ std::vector<std::string> split(const std::string& s, char delim) {
 }
 
 int main(int argc, char** argv) {
-	bool               runController              = false;
-	bool               enablePowerSourceSwitching = false;
-	bool               enablePowerSourceTimer     = false;
-	bool               showHelp                   = false;
+	bool runController    = false;
+	bool enableAutoCharge = false;
+	//bool               enablePowerSourceTimer     = false;
+	bool               showHelp = false;
 	homepower::Monitor monitor;
 	int                defaultInverterWatts    = monitor.InverterSustainedW;
 	int                defaultBatteryWattHours = monitor.BatteryWh;
@@ -33,11 +33,11 @@ int main(int argc, char** argv) {
 			runController = true;
 		} else if (equals(arg, "-?") || equals(arg, "-h") || equals(arg, "--help")) {
 			showHelp = true;
-		} else if (equals(arg, "-s")) {
-			enablePowerSourceSwitching = true;
-		} else if (equals(arg, "-t")) {
-			enablePowerSourceSwitching = true;
-			enablePowerSourceTimer     = true;
+		} else if (equals(arg, "-a")) {
+			enableAutoCharge = true;
+			//} else if (equals(arg, "-t")) {
+			//	enablePowerSourceSwitching = true;
+			//	enablePowerSourceTimer     = true;
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
 			monitor.Inverter.Device = argv[i + 1];
 			i++;
@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
 	if (showHelp) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
 		fprintf(stderr, " -c                Run controller, which switches heavy loads using GPIO pins 17 and 18\n");
-		fprintf(stderr, " -s                Enable source switching between SBU and SUB\n");
-		fprintf(stderr, " -t                Enable source switching between SBU and SUB on timer (implies -s)\n");
+		fprintf(stderr, " -a                Enable auto battery charge, switching between SBU and SUB\n");
+		//fprintf(stderr, " -t                Enable source switching between SBU and SUB on timer (implies -s)\n");
 		fprintf(stderr, " -o <watts>        Invert output power in watts. Default %d\n", defaultInverterWatts);
 		fprintf(stderr, " -b <watt-hours>   Size of battery in watt-hours. Default %d\n", defaultBatteryWattHours);
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
 
 	// The following line is useful when developing offline
 	// Also, uncomment lines at the top of makefile, to enable debug info.
-	bool debug = false;
+	bool debug = true;
 
 	if (debug)
 		monitor.Inverter.DebugResponseFile = "/home/ben/tmp/qpigs.txt";
@@ -104,8 +104,8 @@ int main(int argc, char** argv) {
 	bool ok = true;
 	if (runController) {
 		homepower::Controller controller(&monitor, !debug);
-		controller.EnablePowerSourceSwitch = enablePowerSourceSwitching;
-		controller.EnablePowerSourceTimer  = enablePowerSourceTimer;
+		controller.EnableAutoCharge = enableAutoCharge;
+		//controller.EnablePowerSourceTimer  = enablePowerSourceTimer;
 		controller.SetHeavyLoadMode(homepower::HeavyLoadMode::Grid);
 		controller.Start();
 		ok = homepower::RunHttpServer(controller);

@@ -16,8 +16,16 @@ enum class ChargerPriority {
 	SolarOnly,
 };
 
+enum class TriState {
+	Off,
+	On,
+	Auto,
+};
+
 const char* PowerSourceToString(PowerSource v);
 const char* PowerSourceDescribe(PowerSource v);
 const char* ChargerPriorityToString(ChargerPriority v);
+const char* TriStateToString(TriState s);
+TriState    ParseTriState(const char* s);
 
 } // namespace homepower

@@ -25,7 +25,7 @@ struct History {
 
 class Monitor {
 public:
-	int                SampleWriteInterval   = 3;                // Write to database once every N samples (can be rate-limited to improve SSD endurance).
+	int                SampleWriteInterval   = 12;               // Write to database once every N samples (can be rate-limited to improve SSD endurance).
 	int                SecondsBetweenSamples = 1;                // Record data every N seconds
 	int                InverterSustainedW    = 5600;             // Rated sustained output power of inverter
 	int                BatteryWh             = 4800;             // Size of battery in watt-hours size of battery

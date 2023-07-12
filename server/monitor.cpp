@@ -153,6 +153,7 @@ void Monitor::DBThread() {
 				privateQueue.Clear();
 			}
 		}
+		sleep(1);
 	}
 }
 

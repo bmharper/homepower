@@ -216,7 +216,7 @@ void Controller::Run() {
 				break;
 			}
 			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded)
-				desiredHeavyMode = HeavyLoadMode::Off;
+				desiredHeavyMode = HeavyLoadMode::Grid;
 		}
 
 		if (desiredHeavyMode == HeavyLoadMode::Grid && !hasGridPower) {

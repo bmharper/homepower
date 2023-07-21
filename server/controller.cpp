@@ -314,13 +314,14 @@ void Controller::Run() {
 			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
 			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
 				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
-					// When switching from Battery to Utility, give 1 second to adjust to the grid phase, in case
+					// When switching from Battery to Utility, give a short pause to adjust to the grid phase, in case
 					// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA
 					// whether this is necessary, or if 1 second is long enough, or whether the VM III even loses
 					// phase lock with the grid when in SBU mode. From my measurements of ACinHz vs ACoutHz, I'm
-					// guessing that the VM III does indeed keep it's phase close to the grid, even when in SBU mode.
-					fprintf(stderr, "Pausing for 1 second, after switching back to grid\n");
-					sleep(1);
+					// guessing that the VM III does indeed keep it's phase locked to the grid, even when in SBU mode.
+					// At 50hz, each cycle is 20ms.
+					fprintf(stderr, "Pausing for 200 ms, after switching back to grid\n");
+					usleep(200 * 1000);
 				}
 				if (desiredSource != PowerSource::SBU)
 					SourceCooloff.SignalAlarm(now);

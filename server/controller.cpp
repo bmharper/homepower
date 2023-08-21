@@ -214,7 +214,8 @@ void Controller::Run() {
 				desiredHeavyMode = HeavyLoadMode::Off;
 				break;
 			case TriState::Auto:
-				desiredHeavyMode = (isSolarTime && haveSolarHeavyV && solar5minuteW > load5minuteW) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
+				//desiredHeavyMode = (isSolarTime && haveSolarHeavyV && solar5minuteW > load5minuteW) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
+				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
 				break;
 			}
 			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded)

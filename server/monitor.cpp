@@ -59,6 +59,8 @@ Monitor::Monitor() {
 	SolarV              = 0;
 	AvgSolarW           = 0;
 	AvgSolarV           = 0;
+	Avg5MSolarW         = 0;
+	Avg5MLoadW          = 0;
 	MustExit            = false;
 	IsHeavyOnInverter   = false;
 	CurrentPowerSource  = PowerSource::Unknown;
@@ -239,11 +241,13 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	// sample, and we don't want those blips to cause us to change state.
 	HasGridPower = (float) Maximum(now - 5, GridVHistory) > (float) GridVoltageThreshold;
 
-	SolarV    = (int) filteredSolarV;
-	BatteryV  = filteredBatV;
-	BatteryP  = filteredBatP;
-	AvgSolarW = Average(now - 60, SolarWHistory);
-	AvgLoadW  = Average(now - 60, LoadWHistory);
+	SolarV      = (int) filteredSolarV;
+	BatteryV    = filteredBatV;
+	BatteryP    = filteredBatP;
+	AvgSolarW   = Average(now - 60, SolarWHistory);
+	AvgLoadW    = Average(now - 60, LoadWHistory);
+	Avg5MSolarW = Average(now - 5 * 60, SolarWHistory);
+	Avg5MLoadW  = Average(now - 5 * 60, LoadWHistory);
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);

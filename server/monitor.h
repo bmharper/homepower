@@ -25,37 +25,39 @@ struct History {
 
 class Monitor {
 public:
-	int                SampleWriteInterval   = 12;               // Write to database once every N samples (can be rate-limited to improve SSD endurance).
-	int                SecondsBetweenSamples = 1;                // Record data every N seconds
-	int                InverterSustainedW    = 5600;             // Rated sustained output power of inverter
-	int                BatteryWh             = 4800;             // Size of battery in watt-hours size of battery
-	int                GridVoltageThreshold  = 200;              // Grid voltage below this is considered "grid off"
-	std::atomic<bool>  IsInitialized;                            // Set to true once we've made our first successful reading
-	std::atomic<bool>  IsOutputOverloaded;                       // Signalled when inverter usage is higher than OverloadThresholdWatts
-	std::atomic<bool>  IsBatteryOverloaded;                      // Signalled when we are drawing too much power from the battery
-	std::atomic<bool>  HasGridPower;                             // True if the grid is on
-	std::atomic<int>   SolarV;                                   // Instantaneous solar voltage
-	std::atomic<int>   AvgSolarV;                                // Average solar voltage over last 60 seconds
-	std::atomic<float> AvgSolarW;                                // Average solar wattage over last 60 seconds
-	std::atomic<float> BatteryV;                                 // Battery voltage
-	std::atomic<float> BatteryP;                                 // Battery charge percentage (0..100)
-	std::atomic<float> AvgLoadW;                                 // Average load wattage over last 60 seconds
+	int                SampleWriteInterval   = 12;   // Write to database once every N samples (can be rate-limited to improve SSD endurance).
+	int                SecondsBetweenSamples = 1;    // Record data every N seconds
+	int                InverterSustainedW    = 5600; // Rated sustained output power of inverter
+	int                BatteryWh             = 4800; // Size of battery in watt-hours size of battery
+	int                GridVoltageThreshold  = 200;  // Grid voltage below this is considered "grid off"
+	std::atomic<bool>  IsInitialized;                // Set to true once we've made our first successful reading
+	std::atomic<bool>  IsOutputOverloaded;           // Signalled when inverter usage is higher than OverloadThresholdWatts
+	std::atomic<bool>  IsBatteryOverloaded;          // Signalled when we are drawing too much power from the battery
+	std::atomic<bool>  HasGridPower;                 // True if the grid is on
+	std::atomic<int>   SolarV;                       // Instantaneous solar voltage
+	std::atomic<int>   AvgSolarV;                    // Average solar voltage over last 60 seconds
+	std::atomic<float> AvgSolarW;                    // Average solar wattage over last 60 seconds
+	std::atomic<float> AvgLoadW;                     // Average load wattage over last 60 seconds
+	std::atomic<float> Avg5MSolarW;                  // Average solar wattage over last 5 minutes
+	std::atomic<float> Avg5MLoadW;                   // Average load wattage over last 5 minutes
+	std::atomic<float> BatteryV;                     // Battery voltage
+	std::atomic<float> BatteryP;                     // Battery charge percentage (0..100)
 
-	std::atomic<bool>        IsHeavyOnInverter;                  // Set by Controller - true when heavy loads are on the inverter
-	std::atomic<PowerSource> CurrentPowerSource;                 // Set by Controller - the current invert power source mode (SBU/SUB)
+	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
+	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller - the current invert power source mode (SBU/SUB)
 
-	std::mutex InverterLock;                                     // This is held whenever talking to the Inverter
-	Inverter   Inverter;                                         // You must hold InverterLock when talking to Inverter
+	std::mutex InverterLock; // This is held whenever talking to the Inverter
+	Inverter   Inverter;     // You must hold InverterLock when talking to Inverter
 
-	DBModes DBMode = DBModes::SQLite;                            // Which database to write to
+	DBModes DBMode = DBModes::SQLite; // Which database to write to
 
 	std::string SQLiteFilename = "/mnt/ramdisk/readings.sqlite"; // When DBMode is SQLite, then we write to this sqlite DB
 
-	std::string PostgresHost     = "localhost";                  // When DBMode is Postgres, hostname
-	std::string PostgresPort     = "5432";                       // When DBMode is Postgres, port
-	std::string PostgresDB       = "power";                      // When DBMode is Postgres, db name
-	std::string PostgresUsername = "pi";                         // When DBMode is Postgres, username
-	std::string PostgresPassword = "homepower";                  // When DBMode is Postgres, password
+	std::string PostgresHost     = "localhost"; // When DBMode is Postgres, hostname
+	std::string PostgresPort     = "5432";      // When DBMode is Postgres, port
+	std::string PostgresDB       = "power";     // When DBMode is Postgres, db name
+	std::string PostgresUsername = "pi";        // When DBMode is Postgres, username
+	std::string PostgresPassword = "homepower"; // When DBMode is Postgres, password
 
 	Monitor();
 	void Start();

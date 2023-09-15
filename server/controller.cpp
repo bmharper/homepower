@@ -194,12 +194,11 @@ void Controller::Run() {
 		bool  isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
 		int   solarV          = Monitor->AvgSolarV;
 		int   batteryP        = (int) Monitor->BatteryP;
+		float avgBatteryP     = Monitor->AvgBatteryP;
 		bool  hasGridPower    = Monitor->HasGridPower;
 		bool  haveSolarHeavyV = solarV > MinSolarHeavyV;
 		float solarW          = Monitor->AvgSolarW;
 		float loadW           = Monitor->AvgLoadW;
-		float solar5minuteW   = Monitor->Avg5MSolarW;
-		float load5minuteW    = Monitor->Avg5MLoadW;
 
 		TriState heavyLoadDesired = TriState::Auto;
 		if (KeepHeavyOnWithoutSolar.load())
@@ -214,7 +213,6 @@ void Controller::Run() {
 				desiredHeavyMode = HeavyLoadMode::Off;
 				break;
 			case TriState::Auto:
-				//desiredHeavyMode = (isSolarTime && haveSolarHeavyV && solar5minuteW > load5minuteW) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
 				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
 				break;
 			}
@@ -259,15 +257,20 @@ void Controller::Run() {
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
 
 			// Here we're hopeful that the sun will shine even more.
-			bool earlyInDayOK = nowP.Hour < 12 && solarW >= loadW * 1.1;
+			bool earlyInDayOK = nowP.Hour < 12 && solarW >= loadW * 1.2;
 
 			// Here we have a good amount of charge, and don't want to dump solar power just because our battery is full.
-			bool lateInDayOK = batteryP >= 95 && nowP.Hour >= 12 && solarW >= loadW * 0.9f;
+			// Some inverters (eg Voltronics) can't use solar to power loads when in SUB mode, so that's why switching
+			// back to SBU is vital, in order to utilize that solar power.
+			bool lateInDayOK = avgBatteryP >= 100.0f && nowP.Hour >= 12 && solarW >= loadW * 0.97f;
 
-			// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time.
-			// We add the batteryP >= 100 criteria to ensure that we give the BMS a chance to equalize the battery cells
-			// at least once a day.
-			bool endOfDayOK = batteryP >= 100 && (nowP.Hour >= 17 || nowP.Hour <= 7);
+			// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time,
+			// provided we're fully charged.
+			bool endOfDayOK = avgBatteryP >= 100.0f && (nowP.Hour >= 17 || nowP.Hour <= 7);
+
+			// The avgBatteryP >= 100 criteria above is to ensure that we give the BMS a chance to equalize the battery cells
+			// at least once a day. This average is taken over the last 10 minutes, to ensure that the BMS has had enough
+			// time to equalize the cells.
 
 			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
 				lastChargeMsg = now;

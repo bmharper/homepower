@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include "../json.hpp"
 
 namespace homepower {
 
@@ -50,8 +49,6 @@ public:
 		std::string Unknown5;
 		std::string Unknown6;
 		bool        Heavy;
-
-		nlohmann::json ToJSON() const;
 	};
 
 	std::string Device            = "/dev/hidraw0"; // Name of device to open, such as /dev/hidraw0 or /dev/ttyUSB0

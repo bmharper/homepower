@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <float.h>
 #include <algorithm>
-#include "../json.hpp"
 
 using namespace std;
 
@@ -59,8 +58,7 @@ Monitor::Monitor() {
 	SolarV              = 0;
 	AvgSolarW           = 0;
 	AvgSolarV           = 0;
-	Avg5MSolarW         = 0;
-	Avg5MLoadW          = 0;
+	AvgBatteryP         = 0;
 	MustExit            = false;
 	IsHeavyOnInverter   = false;
 	CurrentPowerSource  = PowerSource::Unknown;
@@ -80,7 +78,7 @@ Monitor::Monitor() {
 	DeficitWHistory.Initialize(256);
 	SolarWHistory.Initialize(512);
 	GridVHistory.Initialize(256);
-	BatPHistory.Initialize(256);
+	BatPHistory.Initialize(512);
 	BatVHistory.Initialize(256);
 }
 
@@ -247,17 +245,10 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	BatteryP    = filteredBatP;
 	AvgSolarW   = Average(now - 60, SolarWHistory);
 	AvgLoadW    = Average(now - 60, LoadWHistory);
-	Avg5MSolarW = Average(now - 10 * 60, SolarWHistory);
-	Avg5MLoadW  = Average(now - 10 * 60, LoadWHistory);
+	AvgBatteryP = Average(now - 10 * 60, BatPHistory);
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);
-}
-
-static double GetDbl(const nlohmann::json& j, const char* key) {
-	if (j.find(key) == j.end())
-		return 0;
-	return j[key].get<double>();
 }
 
 static void AddDbl(string& s, double v, bool comma = true) {

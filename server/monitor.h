@@ -38,10 +38,9 @@ public:
 	std::atomic<int>   AvgSolarV;                    // Average solar voltage over last 60 seconds
 	std::atomic<float> AvgSolarW;                    // Average solar wattage over last 60 seconds
 	std::atomic<float> AvgLoadW;                     // Average load wattage over last 60 seconds
-	std::atomic<float> Avg5MSolarW;                  // Average solar wattage over last 5 minutes
-	std::atomic<float> Avg5MLoadW;                   // Average load wattage over last 5 minutes
 	std::atomic<float> BatteryV;                     // Battery voltage
 	std::atomic<float> BatteryP;                     // Battery charge percentage (0..100)
+	std::atomic<float> AvgBatteryP;                  // Average battery charge percentage (0..100) over last 10 minutes
 
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
 	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller - the current invert power source mode (SBU/SUB)

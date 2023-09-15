@@ -224,33 +224,6 @@ bool Inverter::Interpret(const std::string& resp, Record_QPIGS& out) {
 	return false;
 }
 
-nlohmann::json Inverter::Record_QPIGS::ToJSON() const {
-	return nlohmann::json({
-	    {"Raw", Raw},
-	    {"ACInV", ACInV},
-	    {"ACInHz", ACInHz},
-	    {"ACOutV", ACOutV},
-	    {"ACOutHz", ACOutHz},
-	    {"LoadVA", LoadVA},
-	    {"LoadW", LoadW},
-	    {"LoadP", LoadP},
-	    {"BusV", BusV},
-	    {"BatV", BatV},
-	    {"BatChA", BatChA},
-	    {"BatP", BatP},
-	    {"Temp", Temp},
-	    {"PvA", PvA},
-	    {"PvV", PvV},
-	    {"PvW", PvW},
-	    {"Unknown1", Unknown1},
-	    {"Unknown2", Unknown2},
-	    {"Unknown3", Unknown3},
-	    {"Unknown4", Unknown4},
-	    {"Unknown5", Unknown5},
-	    {"Unknown6", Unknown6},
-	});
-}
-
 Inverter::~Inverter() {
 	Close();
 }
@@ -288,9 +261,9 @@ bool Inverter::Open() {
 			Close();
 			return false;
 		}
-		cfmakeraw(&settings);             // It's vital to set this to RAW mode (instead of LINE)
-		settings.c_cflag &= ~PARENB;      // no parity
-		settings.c_cflag &= ~CSTOPB;      // 1 stop bit
+		cfmakeraw(&settings);        // It's vital to set this to RAW mode (instead of LINE)
+		settings.c_cflag &= ~PARENB; // no parity
+		settings.c_cflag &= ~CSTOPB; // 1 stop bit
 		settings.c_cflag &= ~CSIZE;
 		settings.c_cflag |= CS8 | CLOCAL; // 8 bits
 		// settings.c_lflag = ICANON;         // canonical mode

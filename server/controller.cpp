@@ -257,7 +257,7 @@ void Controller::Run() {
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
 
 			// Here we're hopeful that the sun will shine even more.
-			bool earlyInDayOK = nowP.Hour < 12 && solarW >= loadW * 1.2;
+			bool earlyInDayOK = batteryP >= goalBatteryP && nowP.Hour < 12 && solarW >= loadW * 1.2;
 
 			// Here we have a good amount of charge, and don't want to dump solar power just because our battery is full.
 			// Some inverters (eg Voltronics) can't use solar to power loads when in SUB mode, so that's why switching
@@ -284,7 +284,7 @@ void Controller::Run() {
 				fprintf(stderr, "Battery is low (%d < %d), switching to SUB\n", batteryP, goalBatteryP);
 				ChargeStartedInHour = nowP.Hour;
 				desiredSource       = PowerSource::SUB;
-			} else if (CurrentPowerSource != PowerSource::SBU && batteryP >= goalBatteryP && (earlyInDayOK || lateInDayOK || endOfDayOK)) {
+			} else if (CurrentPowerSource != PowerSource::SBU && (earlyInDayOK || lateInDayOK || endOfDayOK)) {
 				// We are charged enough - switch to SBU.
 				// Note that we only switch back to SBU once we're either fully charge at the end of the day, or we have
 				// enough solar power to power our average daily loads. Without these final conditions, we would flip flop

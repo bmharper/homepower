@@ -120,7 +120,8 @@ private:
 	std::mutex        HeavyLoadLock;        // Guards access to SetHeavyLoadMode
 	std::atomic<int>  ChangePowerSourceMsg; // Used by HTTP to signal to controller thread to change power source
 	//time_t            ChargeStartedAt = 0;  // Moment when we decided that we needed to start charging again
-	int ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
+	int    ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
+	time_t LastEqualizeAt      = 0;  // Time when we last equalized (100% SOC for 10 minutes)
 
 	void      Run();
 	TimePoint Now();

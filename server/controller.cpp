@@ -252,30 +252,49 @@ void Controller::Run() {
 				goalBatteryP     = max(currentPlus5, MinBattery[nextHour]);
 			}
 
+			if (avgBatteryP >= 100.0f)
+				LastEqualizeAt = now;
+
+			time_t secondsSinceLastEqualize = now - LastEqualizeAt;
+
 			// A key thing about the voltronic MKS inverters is that once the battery is charged, and they're in SUB mode,
 			// then they no longer use the solar power for anything besides running the inverter itself (around 50W).
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
 
-			// Here we're hopeful that the sun will shine even more.
-			bool earlyInDayOK = batteryP >= goalBatteryP && nowP.Hour < 12 && solarW >= loadW * 1.2;
+			bool earlyInDayOK = false;
+			bool lateInDayOK  = false;
+			bool endOfDayOK   = false;
 
-			// Here we have a good amount of charge, and don't want to dump solar power just because our battery is full.
-			// Some inverters (eg Voltronics) can't use solar to power loads when in SUB mode, so that's why switching
-			// back to SBU is vital, in order to utilize that solar power.
-			bool lateInDayOK = avgBatteryP >= 100.0f && nowP.Hour >= 12 && solarW >= loadW * 0.97f;
+			if (nowP.Hour < 12) {
+				// Here we're hopeful that the sun will shine even more.
+				earlyInDayOK = batteryP >= goalBatteryP && solarW >= loadW * 1.2;
+			} else {
+				// Here we have a good amount of charge, and don't want to dump solar power just because our battery is full.
+				// Some inverters (eg Voltronics) can't use solar to power loads when in SUB mode, so that's why switching
+				// back to SBU is vital, in order to utilize that solar power.
+				// We must make this switch some time before 100%, because by the time we reach 100%, the solarW will have
+				// dropped to near zero, since the BMS is telling us that it is almost full. With my Pylontech UP5000 batteries,
+				// 98% SOC is where the charge amps really start to drop off, so 96% is some grace on top of that.
+				lateInDayOK = batteryP >= 96.0f && nowP.Hour >= 12 && solarW >= loadW;
+			}
 
-			// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time,
-			// provided we're fully charged.
-			bool endOfDayOK = avgBatteryP >= 100.0f && (nowP.Hour >= 17 || nowP.Hour <= 7);
+			if (nowP.Hour >= 17 || nowP.Hour <= 7) {
+				// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time,
+				// provided we're fully charged.
+				endOfDayOK = avgBatteryP >= 100.0f;
 
-			// The avgBatteryP >= 100 criteria above is to ensure that we give the BMS a chance to equalize the battery cells
-			// at least once a day. This average is taken over the last 10 minutes, to ensure that the BMS has had enough
-			// time to equalize the cells.
+				// Ensure that we give the battery a chance to balance the cells every day, regardless of the SOC hourly goal.
+				if (secondsSinceLastEqualize >= 24 * 3600) {
+					// Ensure that we stay in charging mode until we're equalized.
+					// The SOC can never be 200, so this will force SUB mode.
+					goalBatteryP = 200;
+				}
+			}
 
 			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
 				lastChargeMsg = now;
-				fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s\n",
-				        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, solarW, loadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no");
+				fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s, sinceEqualize: %.0f\n",
+				        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, solarW, loadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
 				fflush(stderr);
 			}
 

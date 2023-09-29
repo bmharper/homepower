@@ -216,7 +216,7 @@ void Controller::Run() {
 				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
 				break;
 			}
-			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded)
+			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 35)
 				desiredHeavyMode = HeavyLoadMode::Grid;
 		}
 

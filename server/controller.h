@@ -80,16 +80,17 @@ struct Cooloff {
 
 class Controller {
 public:
-	bool      EnableGpio              = true;              // This can be disabled for debugging
-	int       GpioPinGrid             = 17;                // GPIO/BCM pin number set to 1 when switching heavy loads to grid
-	int       GpioPinInverter         = 18;                // GPIO/BCM pin number set to 1 when switching heavy loads to inverter
-	int       SwitchSleepMilliseconds = 10;                // 50hz = 20ms cycle time. Hager ESC225 have 25ms closing delay, and 15ms opening delay.
-	int       TimezoneOffsetMinutes   = 120;               // 120 = UTC+2 (Overridden by constructor)
-	int       MinSolarHeavyV          = 250;               // Minimum solar voltage before we'll put heavy loads on it
-	int       MinBatteryChargePercent = 20;                // Switch off heavy loads and switch to SUB when battery gets this low
-	int       ChargeMinutes           = 120;               // If we detect that our battery is very low, then go back to charge mode for at least this long
-	TimePoint SolarOnAt               = TimePoint(7, 0);   // Ignore any solar voltage before this time
-	TimePoint SolarOffAt              = TimePoint(16, 45); // Ignore any solar voltage after this time
+	bool      EnableGpio                = true;              // This can be disabled for debugging
+	bool      EnableInverterStateChange = true;              // If false, then do not actually change any inverter state, but pretend that we do.
+	int       GpioPinGrid               = 17;                // GPIO/BCM pin number set to 1 when switching heavy loads to grid
+	int       GpioPinInverter           = 18;                // GPIO/BCM pin number set to 1 when switching heavy loads to inverter
+	int       SwitchSleepMilliseconds   = 10;                // 50hz = 20ms cycle time. Hager ESC225 have 25ms closing delay, and 15ms opening delay.
+	int       TimezoneOffsetMinutes     = 120;               // 120 = UTC+2 (Overridden by constructor)
+	int       MinSolarHeavyV            = 250;               // Minimum solar voltage before we'll put heavy loads on it
+	int       MinBatteryChargePercent   = 20;                // Switch off heavy loads and switch to SUB when battery gets this low
+	int       ChargeMinutes             = 120;               // If we detect that our battery is very low, then go back to charge mode for at least this long
+	TimePoint SolarOnAt                 = TimePoint(7, 0);   // Ignore any solar voltage before this time
+	TimePoint SolarOffAt                = TimePoint(16, 45); // Ignore any solar voltage after this time
 	//TimePoint TimerSUB                = TimePoint(17, 15); // Switch to SUB at this time
 	//TimePoint TimerSBU                = TimePoint(21, 0);  // Switch to SBU at this time
 	//bool      EnablePowerSourceTimer  = false;             // Respect TimerSUB and TimerSBU
@@ -102,7 +103,7 @@ public:
 	// invoked mode, and default off.
 	std::atomic<bool> KeepHeavyOnWithoutSolar;
 
-	Controller(homepower::Monitor* monitor, bool enableGpio);
+	Controller(homepower::Monitor* monitor, bool enableGpio, bool enableInverterStateChange);
 	~Controller();
 	void Start();
 	void Stop();

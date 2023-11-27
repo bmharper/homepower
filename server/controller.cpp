@@ -40,17 +40,18 @@ TimePoint TimePoint::Now(int timezoneOffsetMinutes) {
 	return tp;
 }
 
-Controller::Controller(homepower::Monitor* monitor, bool enableGpio) {
+Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enableInverterStateChange) {
 	// I don't know of any way to read the state of the GPIO output pins using WiringPI,
 	// so in order to know our state at startup, we need to create it.
 	// This seems like a conservative thing to do anyway.
 	// I'm sure there is a way to read the state using other mechanisms, but I don't
 	// have any need for that, because this server is intended to come on and stay
 	// on for months, without a restart.
-	Monitor                 = monitor;
-	MustExit                = false;
-	KeepHeavyOnWithoutSolar = false;
-	EnableGpio              = enableGpio;
+	Monitor                   = monitor;
+	MustExit                  = false;
+	KeepHeavyOnWithoutSolar   = false;
+	EnableGpio                = enableGpio;
+	EnableInverterStateChange = enableInverterStateChange;
 	if (EnableGpio) {
 		if (bcm2835_init() == 0) {
 			fprintf(stderr, "bcm2835_init failed\n");
@@ -337,7 +338,8 @@ void Controller::Run() {
 		if (desiredSource != CurrentPowerSource && monitorIsAlive) {
 			//(SourceCooloff.IsGood(now) || desiredSource == PowerSource::SUB)) { // only applicable to old AGM logic
 			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
-			if (Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource))) {
+			bool cmdOK = EnableInverterStateChange ? Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource)) : true;
+			if (cmdOK) {
 				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
 					// When switching from Battery to Utility, give a short pause to adjust to the grid phase, in case
 					// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA

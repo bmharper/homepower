@@ -22,6 +22,7 @@ std::vector<std::string> split(const std::string& s, char delim) {
 int main(int argc, char** argv) {
 	bool runController    = false;
 	bool enableAutoCharge = false;
+	bool debug            = false;
 	//bool               enablePowerSourceTimer     = false;
 	bool               showHelp = false;
 	homepower::Monitor monitor;
@@ -38,6 +39,8 @@ int main(int argc, char** argv) {
 			//} else if (equals(arg, "-t")) {
 			//	enablePowerSourceSwitching = true;
 			//	enablePowerSourceTimer     = true;
+		} else if (equals(arg, "-d")) {
+			debug = true;
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
 			monitor.Inverter.Device = argv[i + 1];
 			i++;
@@ -82,6 +85,9 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
 		fprintf(stderr, " -c                Run controller, which switches heavy loads using GPIO pins 17 and 18\n");
 		fprintf(stderr, " -a                Enable auto battery charge, switching between SBU and SUB\n");
+		fprintf(stderr, " -d                Enable debug mode, which will not actually send any GPIO commands or\n");
+		fprintf(stderr, "                   inverter state change commands. Used for debugging logic without\n");
+		fprintf(stderr, "                   affecting a live system.\n");
 		//fprintf(stderr, " -t                Enable source switching between SBU and SUB on timer (implies -s)\n");
 		fprintf(stderr, " -o <watts>        Invert output power in watts. Default %d\n", defaultInverterWatts);
 		fprintf(stderr, " -b <watt-hours>   Size of battery in watt-hours. Default %d\n", defaultBatteryWattHours);
@@ -93,17 +99,13 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	// The following line is useful when developing offline
-	// Also, uncomment lines at the top of makefile, to enable debug info.
-	bool debug = false;
-
 	if (debug)
 		monitor.Inverter.DebugResponseFile = "/home/ben/tmp/qpigs.txt";
 
 	monitor.Start();
 	bool ok = true;
 	if (runController) {
-		homepower::Controller controller(&monitor, !debug);
+		homepower::Controller controller(&monitor, !debug, !debug);
 		controller.EnableAutoCharge = enableAutoCharge;
 		//controller.EnablePowerSourceTimer  = enablePowerSourceTimer;
 		controller.SetHeavyLoadMode(homepower::HeavyLoadMode::Grid);

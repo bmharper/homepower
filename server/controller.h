@@ -111,18 +111,22 @@ public:
 	void ChangePowerSource(PowerSource source);
 
 private:
-	std::thread       Thread;
-	std::atomic<bool> MustExit;
-	Monitor*          Monitor              = nullptr;
-	HeavyLoadMode     CurrentHeavyLoadMode = HeavyLoadMode::Off;
-	PowerSource       CurrentPowerSource   = PowerSource::Unknown;
-	Cooloff           SourceCooloff;
-	Cooloff           HeavyCooloff;
-	std::mutex        HeavyLoadLock;        // Guards access to SetHeavyLoadMode
-	std::atomic<int>  ChangePowerSourceMsg; // Used by HTTP to signal to controller thread to change power source
-	//time_t            ChargeStartedAt = 0;  // Moment when we decided that we needed to start charging again
-	int    ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
-	time_t LastEqualizeAt      = 0;  // Time when we last equalized (100% SOC for 10 minutes)
+	std::thread         Thread;
+	std::atomic<bool>   MustExit;
+	homepower::Monitor* Monitor              = nullptr;
+	HeavyLoadMode       CurrentHeavyLoadMode = HeavyLoadMode::Off;
+	PowerSource         CurrentPowerSource   = PowerSource::Unknown;
+	Cooloff             HeavyCooloff;
+	std::mutex          HeavyLoadLock;            // Guards access to SetHeavyLoadMode
+	std::atomic<int>    ChangePowerSourceMsg;     // Used by HTTP to signal to controller thread to change power source
+	int                 ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
+	time_t              LastEqualizeAt      = 0;  // Time when we last equalized (100% SOC for 10 minutes)
+	time_t              LastSwitchToSBU     = 0;  // Time when we last switched to SBU
+
+	// Don't allow switching to SBU more than once every 5 minutes.
+	// This is a safeguard against bugs that could lead us to flipping state too frequently.
+	// Such a bug happened in practice.
+	time_t MinSecondsBetweenSBUSwitches = 5 * 60;
 
 	void      Run();
 	TimePoint Now();

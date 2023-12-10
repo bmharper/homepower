@@ -295,6 +295,9 @@ bool Monitor::CommitReadings(RingBuffer<Inverter::Record_QPIGS>& records) {
 	if (records.Size() == 0)
 		return true;
 
+	if (DBMode == DBModes::SQLite && SQLiteFilename == "/dev/null")
+		return true;
+
 	bool postgres = DBMode == DBModes::Postgres;
 
 	string create = CreateSchemaSQL;

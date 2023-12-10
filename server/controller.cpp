@@ -23,6 +23,8 @@ const char* ModeToString(HeavyLoadMode mode) {
 	case HeavyLoadMode::Grid: return "Grid";
 	case HeavyLoadMode::Inverter: return "Inverter";
 	}
+	return "INVALID";
+	// unreachable
 }
 
 TimePoint TimePoint::Now(int timezoneOffsetMinutes) {
@@ -90,7 +92,7 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	MinBattery[22] = 55;
 	MinBattery[23] = 50;
 
-	time_t    t  = time(NULL);
+	time_t    t  = time(nullptr);
 	struct tm lt = {0};
 	localtime_r(&t, &lt);
 	TimezoneOffsetMinutes = (int) (lt.tm_gmtoff / 60);
@@ -98,6 +100,8 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 
 	auto now = Now();
 	fprintf(stderr, "Time now (local): %d:%02d\n", now.Hour, now.Minute);
+
+	LastEqualizeAt = time(nullptr);
 }
 
 Controller::~Controller() {
@@ -258,6 +262,20 @@ void Controller::Run() {
 
 			time_t secondsSinceLastEqualize = now - LastEqualizeAt;
 
+			if (nowP.Hour >= 17 || nowP.Hour <= 7) {
+				// Ensure that we give the battery a chance to balance the cells every day, regardless of the SOC hourly goal.
+				// Note that it is vital that we alter goalBatteryP up here, before any of the other decisions are made,
+				// otherwise we can end up in a situation where we switch to SUB mode, and then immediately switch back to SBU,
+				// because both sides of our "let's charge" and "we have enough" will be true at the same time.
+				// It was due to this original bug that we added the MinSecondsBetweenSBUSwitches protection logic, to
+				// prevent flipping between states too frequently. The inverter DID NOT enjoy this, and kept restarting itself.
+				if (secondsSinceLastEqualize >= 24 * 3600) {
+					// Ensure that we stay in charging mode until we're equalized.
+					// The SOC can never be 200, so this will force SUB mode.
+					goalBatteryP = max(goalBatteryP, 200);
+				}
+			}
+
 			// A key thing about the voltronic MKS inverters is that once the battery is charged, and they're in SUB mode,
 			// then they no longer use the solar power for anything besides running the inverter itself (around 50W).
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
@@ -283,13 +301,6 @@ void Controller::Run() {
 				// By this time solar power has pretty much dropped to zero, so we always go into battery mode at this time,
 				// provided we're fully charged.
 				endOfDayOK = avgBatteryP >= 100.0f;
-
-				// Ensure that we give the battery a chance to balance the cells every day, regardless of the SOC hourly goal.
-				if (secondsSinceLastEqualize >= 24 * 3600) {
-					// Ensure that we stay in charging mode until we're equalized.
-					// The SOC can never be 200, so this will force SUB mode.
-					goalBatteryP = 200;
-				}
 			}
 
 			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
@@ -319,48 +330,49 @@ void Controller::Run() {
 		// This is sloppy use of an atomic variable, but our needs are simple.
 		auto specialRequest = (PowerSource) ChangePowerSourceMsg.load();
 
-		// Note that these 'minute precision' checks will execute repeatedly for an entire minute
-		//if (nowP.EqualsMinutePrecision(TimerSUB) && EnablePowerSourceTimer) {
-		//	desiredSource = PowerSource::SUB;
-		//} else if (nowP.EqualsMinutePrecision(TimerSBU) && EnablePowerSourceTimer) {
-		//	desiredSource = PowerSource::SBU;
-		//} else if (request != PowerSource::Unknown) {
 		if (specialRequest != PowerSource::Unknown) {
 			desiredSource        = specialRequest;
 			ChargeStartedInHour  = -1;
 			ChangePowerSourceMsg = (int) PowerSource::Unknown; // signal that we've made the desired change (aka reset the atomic toggle)
 		}
 
-		// NOTE: I am disabling SourceCooloff, now that I have a 4.8 kwh lithium ion battery.
-		// With the lithium ion battery, I only switch between SUB and SBU on a timer.
-		// I plan on revisiting this decision... but need a more robust decision mechanism.
-
 		if (desiredSource != CurrentPowerSource && monitorIsAlive) {
-			//(SourceCooloff.IsGood(now) || desiredSource == PowerSource::SUB)) { // only applicable to old AGM logic
-			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
-			bool cmdOK = EnableInverterStateChange ? Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource)) : true;
-			if (cmdOK) {
-				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
-					// When switching from Battery to Utility, give a short pause to adjust to the grid phase, in case
-					// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA
-					// whether this is necessary, or if 1 second is long enough, or whether the VM III even loses
-					// phase lock with the grid when in SBU mode. From my measurements of ACinHz vs ACoutHz, I'm
-					// guessing that the VM III does indeed keep it's phase locked to the grid, even when in SBU mode.
-					// At 50hz, each cycle is 20ms.
-					fprintf(stderr, "Pausing for 200 ms, after switching back to grid\n");
-					usleep(200 * 1000);
+			bool skip  = false;
+			bool cmdOK = false;
+			if (desiredSource == PowerSource::SBU && now - LastSwitchToSBU < MinSecondsBetweenSBUSwitches) {
+				if (now - LastSwitchToSBU < 5) {
+					// only emit the log message for the first 5 seconds
+					fprintf(stderr, "Not switching to SBU, because too little time has elapsed since last switch (%d < %d)\n", (int) (now - LastSwitchToSBU), (int) MinSecondsBetweenSBUSwitches);
 				}
-				if (desiredSource != PowerSource::SBU)
-					SourceCooloff.SignalAlarm(now);
-				CurrentPowerSource          = desiredSource;
-				Monitor->CurrentPowerSource = CurrentPowerSource;
+				skip = true;
+			} else if (!EnableInverterStateChange) {
+				fprintf(stderr, "EnableInverterStateChange = false, so not actually changing inverter state\n");
+				cmdOK = true;
 			} else {
-				fprintf(stderr, "Switching inverter mode failed\n");
+				fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
+				cmdOK = Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource));
+			}
+			if (!skip) {
+				if (cmdOK) {
+					if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
+						// When switching from Battery to Utility, give a short pause to adjust to the grid phase, in case
+						// we're also about to switch the heavy loads from Inverter back to Grid. I have NO IDEA
+						// whether this is necessary, or if this pause is long enough, or whether the VM III even loses
+						// phase lock with the grid when in SBU mode. From my measurements of ACinHz vs ACoutHz, I'm
+						// guessing that the VM III does indeed keep it's phase locked to the grid, even when in SBU mode.
+						// At 50hz, each cycle is 20ms.
+						fprintf(stderr, "Pausing for 500 ms, after switching back to grid\n");
+						usleep(500 * 1000);
+					}
+					if (desiredSource == PowerSource::SBU)
+						LastSwitchToSBU = now;
+					CurrentPowerSource          = desiredSource;
+					Monitor->CurrentPowerSource = CurrentPowerSource;
+				} else {
+					fprintf(stderr, "Switching inverter mode failed\n");
+				}
 			}
 		}
-
-		if (desiredSource == PowerSource::SBU)
-			SourceCooloff.SignalFine(now);
 
 		if (desiredHeavyMode != CurrentHeavyLoadMode) {
 			if (desiredHeavyMode == HeavyLoadMode::Grid || desiredHeavyMode == HeavyLoadMode::Off || HeavyCooloff.IsGood(now)) {

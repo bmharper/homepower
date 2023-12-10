@@ -1,12 +1,18 @@
+CCOMPILER := clang
+CXXCOMPILER := clang++
+
+#CCOMPILER := gcc
+#CXXCOMPILER := g++
+
 # Debug
-#CC := clang -g
-#CXX := clang++ -std=c++11 -g
+#CC := $(CCOMPILER) -g -O0
+#CXX := $(CXXCOMPILER) -std=c++11 -g -O0
 
 # Regular
-CC := clang -O1
-CXX := clang++ -std=c++11 -O1
+CC := $(CCOMPILER) -O1
+CXX := $(CXXCOMPILER) -std=c++11 -O1
 
-LINK := clang++ -lpthread
+LINK := $(CXXCOMPILER) -lpthread
 CXX_EXE_OUT := -o  
 CC_OBJ_OUT := -o  
 CXX_OBJ_OUT := -o  

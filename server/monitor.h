@@ -45,8 +45,8 @@ public:
 	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
 	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller - the current invert power source mode (SBU/SUB)
 
-	std::mutex InverterLock; // This is held whenever talking to the Inverter
-	Inverter   Inverter;     // You must hold InverterLock when talking to Inverter
+	std::mutex          InverterLock; // This is held whenever talking to the Inverter
+	homepower::Inverter Inverter;     // You must hold InverterLock when talking to Inverter
 
 	DBModes DBMode = DBModes::SQLite; // Which database to write to
 

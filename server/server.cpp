@@ -95,12 +95,14 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0\n");
 		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.Inverter.Device.c_str());
 		fprintf(stderr, " -p <postgres>     Postgres connection string separated by colons host:port:db:user:password\n");
-		fprintf(stderr, " -l <sqlite>       Sqlite DB\n");
+		fprintf(stderr, " -l <sqlite>       Sqlite DB filename (specify /dev/null as SQLite filename to disable any DB writes)\n");
 		return 1;
 	}
 
-	if (debug)
+	if (debug) {
+		// For example data, see the comment block below
 		monitor.Inverter.DebugResponseFile = "/home/ben/tmp/qpigs.txt";
+	}
 
 	monitor.Start();
 	bool ok = true;
@@ -121,3 +123,35 @@ int main(int argc, char** argv) {
 	monitor.Stop();
 	return ok ? 0 : 1;
 }
+
+/*
+Example QPIGS output:
+
+(235.1 50.1 229.7 50.0 0620 0574 011 381 50.90 032 082 0046 09.0 273.8 00.00 00000 00010010 00 00 02431 010
+
+Interpreted:
+{
+    "ACInHz": 50.099998474121094,
+    "ACInV": 235.10000610351563,
+    "ACOutHz": 50.0,
+    "ACOutV": 229.6999969482422,
+    "BatChA": 32.0,
+    "BatP": 82.0,
+    "BatV": 50.900001525878906,
+    "BusV": 381.0,
+    "LoadP": 11.0,
+    "LoadVA": 620.0,
+    "LoadW": 574.0,
+    "PvA": 9.0,
+    "PvV": 273.79998779296875,
+    "PvW": 2431.0,
+    "Raw": "(235.1 50.1 229.7 50.0 0620 0574 011 381 50.90 032 082 0046 09.0 273.8 00.00 00000 00010010 00 00 02431 010",
+    "Temp": 46.0,
+    "Unknown1": 0.0,
+    "Unknown2": "00000",
+    "Unknown3": "00010010",
+    "Unknown4": "00",
+    "Unknown5": "00",
+    "Unknown6": "010"
+}		
+*/

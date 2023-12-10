@@ -337,8 +337,16 @@ void Controller::Run() {
 
 		if (desiredSource != CurrentPowerSource && monitorIsAlive) {
 			//(SourceCooloff.IsGood(now) || desiredSource == PowerSource::SUB)) { // only applicable to old AGM logic
-			fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
-			bool cmdOK = EnableInverterStateChange ? Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource)) : true;
+			bool cmdOK = true;
+			if (desiredSource == PowerSource::SBU && now - LastSwitchToSBU < MinSecondsBetweenSBUSwitches) {
+				fprintf(stderr, "Not switching to SBU, because too little time has elapsed since last switch (%d < %d)\n", (int) (now - LastSwitchToSBU), (int) MinSecondsBetweenSBUSwitches);
+				cmdOK = false;
+			} else if (!EnableInverterStateChange) {
+				fprintf(stderr, "EnableInverterStateChange = false, so not actually changing inverter state\n");
+			} else {
+				fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
+				cmdOK = Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource));
+			}
 			if (cmdOK) {
 				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
 					// When switching from Battery to Utility, give a short pause to adjust to the grid phase, in case
@@ -350,6 +358,8 @@ void Controller::Run() {
 					fprintf(stderr, "Pausing for 200 ms, after switching back to grid\n");
 					usleep(200 * 1000);
 				}
+				if (desiredSource == PowerSource::SBU)
+					LastSwitchToSBU = now;
 				if (desiredSource != PowerSource::SBU)
 					SourceCooloff.SignalAlarm(now);
 				CurrentPowerSource          = desiredSource;

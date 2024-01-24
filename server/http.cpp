@@ -20,9 +20,9 @@ bool RunHttpServer(Controller& controller) {
 			else if (r->Path == "/mode/usb")
 				controller.ChangePowerSource(PowerSource::USB);
 			else if (r->Path == "/heavy/solar")
-				controller.KeepHeavyOnWithoutSolar = false;
+				controller.SetHeavyLoadMode(HeavyLoadMode::OnWithSolar);
 			else if (r->Path == "/heavy/always")
-				controller.KeepHeavyOnWithoutSolar = true;
+				controller.SetHeavyLoadMode(HeavyLoadMode::AlwaysOn);
 			else {
 				w.SetStatusAndBody(404, "Unknown POST request");
 				return;

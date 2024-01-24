@@ -11,12 +11,18 @@ namespace homepower {
 
 class Monitor;
 
+enum class HeavyLoadMode {
+	AlwaysOn,    // Always keep heavy loads on (but power them from grid if we have no solar)
+	OnWithSolar, // Only power heavy loads from battery when we have solar power (but power them from grid if available)
+};
+
 enum class HeavyLoadState {
 	Off,
 	Grid,
 	Inverter,
 };
 
+const char* HeavyLoadModeToString(HeavyLoadMode mode);
 const char* HeavyLoadStateToString(HeavyLoadState mode);
 
 struct TimePoint {
@@ -97,16 +103,11 @@ public:
 	bool EnableAutoCharge = false; // Enable switching between SBU and SUB depending on battery charge
 	int  MinBattery[24]   = {};    // Minimum battery charge percentage in any hour of the day (value from 0 to 100)
 
-	// If true, then we keep heavy loads on even if we have no solar power (but we'll still switch them off if overloaded).
-	// This is useful for stormy days where we're running on SUB mode, because there's no solar,
-	// but we still want to be able to run the washing machine, and auxiliary plugs. This is a manually
-	// invoked mode, and default off.
-	std::atomic<bool> KeepHeavyOnWithoutSolar;
-
 	Controller(homepower::Monitor* monitor, bool enableGpio, bool enableInverterStateChange);
 	~Controller();
 	void Start();
 	void Stop();
+	void SetHeavyLoadMode(HeavyLoadMode m);
 	void SetHeavyLoadState(HeavyLoadState m, bool forceWrite = false);
 	void ChangePowerSource(PowerSource source);
 
@@ -114,10 +115,11 @@ private:
 	std::thread         Thread;
 	std::atomic<bool>   MustExit;
 	homepower::Monitor* Monitor               = nullptr;
+	HeavyLoadMode       CurrentHeavyLoadMode  = HeavyLoadMode::OnWithSolar;
 	HeavyLoadState      CurrentHeavyLoadState = HeavyLoadState::Off;
 	PowerSource         CurrentPowerSource    = PowerSource::Unknown;
 	Cooloff             HeavyCooloff;
-	std::mutex          HeavyLoadLock;            // Guards access to SetHeavyLoadState
+	std::mutex          HeavyLoadLock;            // Guards access to CurrentHeavyLoadMode and CurrentHeavyLoadState
 	std::atomic<int>    ChangePowerSourceMsg;     // Used by HTTP to signal to controller thread to change power source
 	int                 ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
 	time_t              LastEqualizeAt      = 0;  // Time when we last equalized (100% SOC for 10 minutes)

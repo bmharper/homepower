@@ -17,6 +17,15 @@ T Clamp(T v, T vmin, T vmax) {
 	return v;
 }
 
+const char* HeavyLoadModeToString(HeavyLoadMode mode) {
+	switch (mode) {
+	case HeavyLoadMode::AlwaysOn: return "AlwaysOn";
+	case HeavyLoadMode::OnWithSolar: return "OnWithSolar";
+	}
+	return "INVALID";
+	// unreachable
+}
+
 const char* HeavyLoadStateToString(HeavyLoadState mode) {
 	switch (mode) {
 	case HeavyLoadState::Off: return "Off";
@@ -51,7 +60,6 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	// on for months, without a restart.
 	Monitor                   = monitor;
 	MustExit                  = false;
-	KeepHeavyOnWithoutSolar   = false;
 	EnableGpio                = enableGpio;
 	EnableInverterStateChange = enableInverterStateChange;
 	if (EnableGpio) {
@@ -134,6 +142,12 @@ void Controller::Stop() {
 	Thread.join();
 }
 
+void Controller::SetHeavyLoadMode(HeavyLoadMode m) {
+	lock_guard<mutex> lock(HeavyLoadLock);
+	fprintf(stderr, "Set heavy load mode to %s\n", HeavyLoadModeToString(m));
+	CurrentHeavyLoadMode = m;
+}
+
 void Controller::SetHeavyLoadState(HeavyLoadState m, bool forceWrite) {
 	lock_guard<mutex> lock(HeavyLoadLock);
 
@@ -190,10 +204,10 @@ void Controller::Run() {
 	auto lastChargeMsg = 0;
 	auto lastPVStatus  = 0;
 	while (!MustExit) {
-		time_t         now              = time(nullptr);
-		auto           nowP             = Now();
-		HeavyLoadState desiredHeavyMode = HeavyLoadState::Grid;
-		PowerSource    desiredSource    = PowerSource::SUB;
+		time_t         now               = time(nullptr);
+		auto           nowP              = Now();
+		HeavyLoadState desiredHeavyState = HeavyLoadState::Grid;
+		PowerSource    desiredSource     = PowerSource::SUB;
 
 		bool  monitorIsAlive  = Monitor->IsInitialized;
 		bool  isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
@@ -205,33 +219,40 @@ void Controller::Run() {
 		float solarW          = Monitor->AvgSolarW;
 		float loadW           = Monitor->AvgLoadW;
 
-		TriState heavyLoadDesired = TriState::Auto;
-		if (KeepHeavyOnWithoutSolar.load())
-			heavyLoadDesired = TriState::On;
+		HeavyLoadLock.lock();
+		auto heavyMode = CurrentHeavyLoadMode;
+		HeavyLoadLock.unlock();
 
 		if (monitorIsAlive) {
-			switch (heavyLoadDesired) {
-			case TriState::On:
-				desiredHeavyMode = HeavyLoadState::Inverter;
+			switch (heavyMode) {
+			case HeavyLoadMode::AlwaysOn:
+				if (isSolarTime && haveSolarHeavyV) {
+					// Use solar power for loads
+					desiredHeavyState = HeavyLoadState::Inverter;
+				} else if (hasGridPower) {
+					// Don't waste battery power at night, when you have grid power
+					desiredHeavyState = HeavyLoadState::Grid;
+				} else {
+					// No solar, no grid, but we must remain on
+					desiredHeavyState = HeavyLoadState::Inverter;
+				}
 				break;
-			case TriState::Off:
-				desiredHeavyMode = HeavyLoadState::Off;
-				break;
-			case TriState::Auto:
-				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadState::Inverter : HeavyLoadState::Grid;
+			case HeavyLoadMode::OnWithSolar:
+				desiredHeavyState = (isSolarTime && haveSolarHeavyV) ? HeavyLoadState::Inverter : HeavyLoadState::Grid;
 				break;
 			}
 			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 35)
-				desiredHeavyMode = HeavyLoadState::Grid;
+				desiredHeavyState = HeavyLoadState::Grid;
 		}
 
-		if (desiredHeavyMode == HeavyLoadState::Grid && !hasGridPower) {
+		if (desiredHeavyState == HeavyLoadState::Grid && !hasGridPower) {
 			// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
 			// This prevents them from being subject to a spike when the grid is switched back on again.
 			// We assume that this grid spike only lasts a few milliseconds, and by the time we've detected
 			// that the grid is back on, the spike has subsided. In other words, we make no attempt to add
-			// an extra delay before switching the contactors back on. Our polling interval adds enough delay.
-			desiredHeavyMode = HeavyLoadState::Off;
+			// an extra delay before switching the contactors back on. We assume our polling interval adds
+			// enough delay.
+			desiredHeavyState = HeavyLoadState::Off;
 		}
 
 		if (monitorIsAlive && now - lastStatus > 10 * 60) {
@@ -374,15 +395,15 @@ void Controller::Run() {
 			}
 		}
 
-		if (desiredHeavyMode != CurrentHeavyLoadState) {
-			if (desiredHeavyMode == HeavyLoadState::Grid || desiredHeavyMode == HeavyLoadState::Off || HeavyCooloff.IsGood(now)) {
-				if (desiredHeavyMode != HeavyLoadState::Inverter)
+		if (desiredHeavyState != CurrentHeavyLoadState) {
+			if (desiredHeavyState == HeavyLoadState::Grid || desiredHeavyState == HeavyLoadState::Off || HeavyCooloff.IsGood(now)) {
+				if (desiredHeavyState != HeavyLoadState::Inverter)
 					HeavyCooloff.SignalAlarm(now);
-				SetHeavyLoadState(desiredHeavyMode);
+				SetHeavyLoadState(desiredHeavyState);
 			}
 		}
 
-		if (desiredHeavyMode == HeavyLoadState::Inverter)
+		if (desiredHeavyState == HeavyLoadState::Inverter)
 			HeavyCooloff.SignalFine(now);
 
 		int millisecond = 1000;

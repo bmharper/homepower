@@ -17,11 +17,11 @@ T Clamp(T v, T vmin, T vmax) {
 	return v;
 }
 
-const char* ModeToString(HeavyLoadMode mode) {
+const char* HeavyLoadStateToString(HeavyLoadState mode) {
 	switch (mode) {
-	case HeavyLoadMode::Off: return "Off";
-	case HeavyLoadMode::Grid: return "Grid";
-	case HeavyLoadMode::Inverter: return "Inverter";
+	case HeavyLoadState::Off: return "Off";
+	case HeavyLoadState::Grid: return "Grid";
+	case HeavyLoadState::Inverter: return "Inverter";
 	}
 	return "INVALID";
 	// unreachable
@@ -64,8 +64,8 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 		bcm2835_gpio_clr(GpioPinGrid);
 		bcm2835_gpio_clr(GpioPinInverter);
 	}
-	CurrentHeavyLoadMode = HeavyLoadMode::Off;
-	ChangePowerSourceMsg = (int) PowerSource::Unknown;
+	CurrentHeavyLoadState = HeavyLoadState::Off;
+	ChangePowerSourceMsg  = (int) PowerSource::Unknown;
 
 	MinBattery[0]  = 45;
 	MinBattery[1]  = 40;
@@ -134,13 +134,13 @@ void Controller::Stop() {
 	Thread.join();
 }
 
-void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
+void Controller::SetHeavyLoadState(HeavyLoadState m, bool forceWrite) {
 	lock_guard<mutex> lock(HeavyLoadLock);
 
-	if (CurrentHeavyLoadMode == m && !forceWrite)
+	if (CurrentHeavyLoadState == m && !forceWrite)
 		return;
 
-	fprintf(stderr, "Set heavy load mode to %s\n", ModeToString(m));
+	fprintf(stderr, "Set heavy load state to %s\n", HeavyLoadStateToString(m));
 
 	// Ideally, we'd use a switchover device that can do zero crossing,
 	// which means the switch waits until the AC signal crosses over 0 voltage.
@@ -152,7 +152,7 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 	pause.tv_sec  = 0;
 	pause.tv_nsec = SwitchSleepMilliseconds * 1000 * 1000;
 
-	if (m == HeavyLoadMode::Inverter) {
+	if (m == HeavyLoadState::Inverter) {
 		if (EnableGpio) {
 			bcm2835_gpio_clr(GpioPinGrid);
 		}
@@ -161,7 +161,7 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 			bcm2835_gpio_set(GpioPinInverter);
 		}
 		Monitor->IsHeavyOnInverter = true;
-	} else if (m == HeavyLoadMode::Grid) {
+	} else if (m == HeavyLoadState::Grid) {
 		if (EnableGpio) {
 			bcm2835_gpio_clr(GpioPinInverter);
 		}
@@ -170,7 +170,7 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 			bcm2835_gpio_set(GpioPinGrid);
 		}
 		Monitor->IsHeavyOnInverter = false;
-	} else if (m == HeavyLoadMode::Off) {
+	} else if (m == HeavyLoadState::Off) {
 		if (EnableGpio) {
 			bcm2835_gpio_clr(GpioPinInverter);
 			bcm2835_gpio_clr(GpioPinGrid);
@@ -178,7 +178,7 @@ void Controller::SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite) {
 		Monitor->IsHeavyOnInverter = false;
 	}
 
-	CurrentHeavyLoadMode = m;
+	CurrentHeavyLoadState = m;
 }
 
 void Controller::ChangePowerSource(PowerSource source) {
@@ -190,10 +190,10 @@ void Controller::Run() {
 	auto lastChargeMsg = 0;
 	auto lastPVStatus  = 0;
 	while (!MustExit) {
-		time_t        now              = time(nullptr);
-		auto          nowP             = Now();
-		HeavyLoadMode desiredHeavyMode = HeavyLoadMode::Grid;
-		PowerSource   desiredSource    = PowerSource::SUB;
+		time_t         now              = time(nullptr);
+		auto           nowP             = Now();
+		HeavyLoadState desiredHeavyMode = HeavyLoadState::Grid;
+		PowerSource    desiredSource    = PowerSource::SUB;
 
 		bool  monitorIsAlive  = Monitor->IsInitialized;
 		bool  isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
@@ -212,26 +212,26 @@ void Controller::Run() {
 		if (monitorIsAlive) {
 			switch (heavyLoadDesired) {
 			case TriState::On:
-				desiredHeavyMode = HeavyLoadMode::Inverter;
+				desiredHeavyMode = HeavyLoadState::Inverter;
 				break;
 			case TriState::Off:
-				desiredHeavyMode = HeavyLoadMode::Off;
+				desiredHeavyMode = HeavyLoadState::Off;
 				break;
 			case TriState::Auto:
-				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadMode::Inverter : HeavyLoadMode::Grid;
+				desiredHeavyMode = (isSolarTime && haveSolarHeavyV) ? HeavyLoadState::Inverter : HeavyLoadState::Grid;
 				break;
 			}
 			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 35)
-				desiredHeavyMode = HeavyLoadMode::Grid;
+				desiredHeavyMode = HeavyLoadState::Grid;
 		}
 
-		if (desiredHeavyMode == HeavyLoadMode::Grid && !hasGridPower) {
+		if (desiredHeavyMode == HeavyLoadState::Grid && !hasGridPower) {
 			// When the grid is off, and we don't have enough solar power, we switch all non-essential devices off.
 			// This prevents them from being subject to a spike when the grid is switched back on again.
 			// We assume that this grid spike only lasts a few milliseconds, and by the time we've detected
 			// that the grid is back on, the spike has subsided. In other words, we make no attempt to add
 			// an extra delay before switching the contactors back on. Our polling interval adds enough delay.
-			desiredHeavyMode = HeavyLoadMode::Off;
+			desiredHeavyMode = HeavyLoadState::Off;
 		}
 
 		if (monitorIsAlive && now - lastStatus > 10 * 60) {
@@ -374,15 +374,15 @@ void Controller::Run() {
 			}
 		}
 
-		if (desiredHeavyMode != CurrentHeavyLoadMode) {
-			if (desiredHeavyMode == HeavyLoadMode::Grid || desiredHeavyMode == HeavyLoadMode::Off || HeavyCooloff.IsGood(now)) {
-				if (desiredHeavyMode != HeavyLoadMode::Inverter)
+		if (desiredHeavyMode != CurrentHeavyLoadState) {
+			if (desiredHeavyMode == HeavyLoadState::Grid || desiredHeavyMode == HeavyLoadState::Off || HeavyCooloff.IsGood(now)) {
+				if (desiredHeavyMode != HeavyLoadState::Inverter)
 					HeavyCooloff.SignalAlarm(now);
-				SetHeavyLoadMode(desiredHeavyMode);
+				SetHeavyLoadState(desiredHeavyMode);
 			}
 		}
 
-		if (desiredHeavyMode == HeavyLoadMode::Inverter)
+		if (desiredHeavyMode == HeavyLoadState::Inverter)
 			HeavyCooloff.SignalFine(now);
 
 		int millisecond = 1000;

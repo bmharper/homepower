@@ -8,11 +8,11 @@ bool RunHttpServer(Controller& controller) {
 	return server.ListenAndRun("0.0.0.0", 8080, [&](phttp::Response& w, phttp::RequestPtr r) {
 		if (r->Method == "POST") {
 			if (r->Path == "/switch/inverter")
-				controller.SetHeavyLoadMode(HeavyLoadMode::Inverter);
+				controller.SetHeavyLoadState(HeavyLoadState::Inverter);
 			else if (r->Path == "/switch/grid")
-				controller.SetHeavyLoadMode(HeavyLoadMode::Grid);
+				controller.SetHeavyLoadState(HeavyLoadState::Grid);
 			else if (r->Path == "/switch/off")
-				controller.SetHeavyLoadMode(HeavyLoadMode::Off);
+				controller.SetHeavyLoadState(HeavyLoadState::Off);
 			else if (r->Path == "/mode/sub")
 				controller.ChangePowerSource(PowerSource::SUB);
 			else if (r->Path == "/mode/sbu")

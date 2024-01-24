@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
 		homepower::Controller controller(&monitor, !debug, !debug);
 		controller.EnableAutoCharge = enableAutoCharge;
 		//controller.EnablePowerSourceTimer  = enablePowerSourceTimer;
-		controller.SetHeavyLoadMode(homepower::HeavyLoadMode::Grid);
+		controller.SetHeavyLoadState(homepower::HeavyLoadState::Grid);
 		controller.Start();
 		ok = homepower::RunHttpServer(controller);
 		controller.Stop();

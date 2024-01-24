@@ -11,13 +11,13 @@ namespace homepower {
 
 class Monitor;
 
-enum class HeavyLoadMode {
+enum class HeavyLoadState {
 	Off,
 	Grid,
 	Inverter,
 };
 
-const char* ModeToString(HeavyLoadMode mode);
+const char* HeavyLoadStateToString(HeavyLoadState mode);
 
 struct TimePoint {
 	int Hour   = 0;
@@ -107,17 +107,17 @@ public:
 	~Controller();
 	void Start();
 	void Stop();
-	void SetHeavyLoadMode(HeavyLoadMode m, bool forceWrite = false);
+	void SetHeavyLoadState(HeavyLoadState m, bool forceWrite = false);
 	void ChangePowerSource(PowerSource source);
 
 private:
 	std::thread         Thread;
 	std::atomic<bool>   MustExit;
-	homepower::Monitor* Monitor              = nullptr;
-	HeavyLoadMode       CurrentHeavyLoadMode = HeavyLoadMode::Off;
-	PowerSource         CurrentPowerSource   = PowerSource::Unknown;
+	homepower::Monitor* Monitor               = nullptr;
+	HeavyLoadState      CurrentHeavyLoadState = HeavyLoadState::Off;
+	PowerSource         CurrentPowerSource    = PowerSource::Unknown;
 	Cooloff             HeavyCooloff;
-	std::mutex          HeavyLoadLock;            // Guards access to SetHeavyLoadMode
+	std::mutex          HeavyLoadLock;            // Guards access to SetHeavyLoadState
 	std::atomic<int>    ChangePowerSourceMsg;     // Used by HTTP to signal to controller thread to change power source
 	int                 ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
 	time_t              LastEqualizeAt      = 0;  // Time when we last equalized (100% SOC for 10 minutes)

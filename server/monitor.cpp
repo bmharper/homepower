@@ -73,13 +73,14 @@ Monitor::Monitor() {
 	// We want 5 minutes of history, so if we sample once every 2 seconds, then that is
 	// 30 * 5 = 150. Rounded up to next power of 2, we get 256.
 	// For LoadW and SolarW we want even more history, so we do 512 for them.
-	SolarVHistory.Initialize(256);
+	// Screw it, might as well do 512 for all of them.
+	SolarVHistory.Initialize(512);
 	LoadWHistory.Initialize(512);
-	DeficitWHistory.Initialize(256);
+	DeficitWHistory.Initialize(512);
 	SolarWHistory.Initialize(512);
-	GridVHistory.Initialize(256);
+	GridVHistory.Initialize(512);
 	BatPHistory.Initialize(512);
-	BatVHistory.Initialize(256);
+	BatVHistory.Initialize(512);
 }
 
 void Monitor::Start() {
@@ -240,11 +241,11 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	// sample, and we don't want those blips to cause us to change state.
 	HasGridPower = (float) Maximum(now - 5, GridVHistory) > (float) GridVoltageThreshold;
 
-	SolarV      = (int) filteredSolarV;
+	SolarV      = filteredSolarV;
 	BatteryV    = filteredBatV;
 	BatteryP    = filteredBatP;
-	AvgSolarW   = Average(now - 60, SolarWHistory);
-	AvgLoadW    = Average(now - 60, LoadWHistory);
+	AvgSolarW   = Average(now - 5 * 60, SolarWHistory);
+	AvgLoadW    = Average(now - 5 * 60, LoadWHistory);
 	AvgBatteryP = Average(now - 10 * 60, BatPHistory);
 
 	//if (!HasGridPower)

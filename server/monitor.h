@@ -34,8 +34,8 @@ public:
 	std::atomic<bool>  IsOutputOverloaded;           // Signalled when inverter usage is higher than OverloadThresholdWatts
 	std::atomic<bool>  IsBatteryOverloaded;          // Signalled when we are drawing too much power from the battery
 	std::atomic<bool>  HasGridPower;                 // True if the grid is on
-	std::atomic<int>   SolarV;                       // Instantaneous solar voltage
-	std::atomic<int>   AvgSolarV;                    // Average solar voltage over last 60 seconds
+	std::atomic<float> SolarV;                       // Instantaneous solar voltage
+	std::atomic<float> AvgSolarV;                    // Average solar voltage over last 60 seconds
 	std::atomic<float> AvgSolarW;                    // Average solar wattage over last 60 seconds
 	std::atomic<float> AvgLoadW;                     // Average load wattage over last 60 seconds
 	std::atomic<float> BatteryV;                     // Battery voltage

@@ -211,23 +211,24 @@ void Controller::Run() {
 
 		bool  monitorIsAlive  = Monitor->IsInitialized;
 		bool  isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
-		int   solarV          = Monitor->AvgSolarV;
+		float avgSolarV       = Monitor->AvgSolarV;
 		int   batteryP        = (int) Monitor->BatteryP;
 		float avgBatteryP     = Monitor->AvgBatteryP;
 		bool  hasGridPower    = Monitor->HasGridPower;
-		bool  haveSolarHeavyV = solarV > MinSolarHeavyV;
-		float solarW          = Monitor->AvgSolarW;
-		float loadW           = Monitor->AvgLoadW;
+		bool  haveSolarHeavyV = avgSolarV > MinSolarHeavyV;
+		float avgSolarW       = Monitor->AvgSolarW;
+		float avgLoadW        = Monitor->AvgLoadW;
 
 		HeavyLoadLock.lock();
 		auto heavyMode = CurrentHeavyLoadMode;
 		HeavyLoadLock.unlock();
 
 		if (monitorIsAlive) {
+			bool solarExceedsLoads = avgSolarW > avgLoadW;
 			switch (heavyMode) {
 			case HeavyLoadMode::AlwaysOn:
-				if (isSolarTime && haveSolarHeavyV) {
-					// Use solar power for loads
+				if (solarExceedsLoads) {
+					// Use solar power for heavy loads
 					desiredHeavyState = HeavyLoadState::Inverter;
 				} else if (hasGridPower) {
 					// Don't waste battery power at night, when you have grid power
@@ -238,10 +239,14 @@ void Controller::Run() {
 				}
 				break;
 			case HeavyLoadMode::OnWithSolar:
-				desiredHeavyState = (isSolarTime && haveSolarHeavyV) ? HeavyLoadState::Inverter : HeavyLoadState::Grid;
+				if (solarExceedsLoads) {
+					desiredHeavyState = HeavyLoadState::Inverter;
+				} else {
+					desiredHeavyState = HeavyLoadState::Grid;
+				}
 				break;
 			}
-			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 35)
+			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 40)
 				desiredHeavyState = HeavyLoadState::Grid;
 		}
 
@@ -257,8 +262,8 @@ void Controller::Run() {
 
 		if (monitorIsAlive && now - lastStatus > 10 * 60) {
 			lastStatus = now;
-			fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%d): %s, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
-			        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", solarV, haveSolarHeavyV ? "yes" : "no",
+			fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%.1f): %s, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
+			        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", avgSolarV, haveSolarHeavyV ? "yes" : "no",
 			        Monitor->IsOutputOverloaded ? "yes" : "no",
 			        Monitor->IsBatteryOverloaded ? "yes" : "no",
 			        nowP.Hour, nowP.Minute);
@@ -307,7 +312,7 @@ void Controller::Run() {
 
 			if (nowP.Hour < 12) {
 				// Here we're hopeful that the sun will shine even more.
-				earlyInDayOK = batteryP >= goalBatteryP && solarW >= loadW * 1.2;
+				earlyInDayOK = batteryP >= goalBatteryP && avgSolarW >= avgLoadW * 1.2;
 			} else {
 				// Here we have a good amount of charge, and don't want to dump solar power just because our battery is full.
 				// Some inverters (eg Voltronics) can't use solar to power loads when in SUB mode, so that's why switching
@@ -315,7 +320,7 @@ void Controller::Run() {
 				// We must make this switch some time before 100%, because by the time we reach 100%, the solarW will have
 				// dropped to near zero, since the BMS is telling us that it is almost full. With my Pylontech UP5000 batteries,
 				// 98% SOC is where the charge amps really start to drop off, so 96% is some grace on top of that.
-				lateInDayOK = batteryP >= 96.0f && nowP.Hour >= 12 && solarW >= loadW;
+				lateInDayOK = batteryP >= 96.0f && nowP.Hour >= 12 && avgSolarW >= avgLoadW;
 			}
 
 			if (nowP.Hour >= 17 || nowP.Hour <= 7) {
@@ -327,7 +332,7 @@ void Controller::Run() {
 			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
 				lastChargeMsg = now;
 				fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s, sinceEqualize: %.0f\n",
-				        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, solarW, loadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
+				        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, avgSolarW, avgLoadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
 				fflush(stderr);
 			}
 
@@ -341,7 +346,7 @@ void Controller::Run() {
 				// Note that we only switch back to SBU once we're either fully charge at the end of the day, or we have
 				// enough solar power to power our average daily loads. Without these final conditions, we would flip flop
 				// between SBU and SUB on a rainy day.
-				fprintf(stderr, "Battery is sufficient (%d >= %d) (SolarW = %.1f, LoadW = %.1f), switching to SBU\n", batteryP, goalBatteryP, solarW, loadW);
+				fprintf(stderr, "Battery is sufficient (%d >= %d) (SolarW = %.1f, LoadW = %.1f), switching to SBU\n", batteryP, goalBatteryP, avgSolarW, avgLoadW);
 				ChargeStartedInHour = -1;
 				desiredSource       = PowerSource::SBU;
 			}

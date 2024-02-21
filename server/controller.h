@@ -58,9 +58,9 @@ struct TimePoint {
 // can we detect that we might have been wrong. Every time we're forced to switch
 // from our optimistic state back to our conservative state, we double the cooloff period.
 struct Cooloff {
-	time_t DefaultCooloffPeriod = 60;      // When we think things are stable, then cooloff period returns to Default
-	time_t CooloffPeriod        = 60;      // Current backoff time
-	time_t MaxCooloffPeriod     = 60 * 15; // Maximum backoff time
+	time_t DefaultCooloffPeriod = 2 * 6;   // When we think things are stable, then cooloff period returns to Default
+	time_t CooloffPeriod        = 2 * 60;  // Current backoff time
+	time_t MaxCooloffPeriod     = 15 * 60; // Maximum backoff time
 	time_t LastAlarm            = 0;       // Last time that we needed to switch to the conservative state
 
 	// Inform the system that everything appears to be fine

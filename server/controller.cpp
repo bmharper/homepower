@@ -225,27 +225,27 @@ void Controller::Run() {
 
 		if (monitorIsAlive) {
 			bool solarExceedsLoads = avgSolarW > avgLoadW;
-			switch (heavyMode) {
-			case HeavyLoadMode::AlwaysOn:
-				if (solarExceedsLoads) {
-					// Use solar power for heavy loads
-					desiredHeavyState = HeavyLoadState::Inverter;
-				} else if (hasGridPower) {
-					// Don't waste battery power at night, when you have grid power
-					desiredHeavyState = HeavyLoadState::Grid;
-				} else {
-					// No solar, no grid, but we must remain on
-					desiredHeavyState = HeavyLoadState::Inverter;
-				}
-				break;
-			case HeavyLoadMode::OnWithSolar:
-				if (solarExceedsLoads) {
-					desiredHeavyState = HeavyLoadState::Inverter;
-				} else {
-					desiredHeavyState = HeavyLoadState::Grid;
-				}
-				break;
+
+			// This is a grace factor added so that we can do things like run a washing machine in the morning,
+			// even if the load exceeds the solar capacity for a while. The thing we're trying to exclude here
+			// is the situation where it's getting late in the day, and we're just needlessly draining the battery,
+			// only to have to charge it later in the evening. In this situations, we'd rather use grid power to
+			// reduce the charging/discharging losses.
+			// In my house, heavy loads in the afternoon are almost always the airconditioners.
+			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45;
+
+			if (solarExceedsLoads) {
+				// Use solar power for heavy loads
+				desiredHeavyState = HeavyLoadState::Inverter;
+			} else if (hasGridPower) {
+				// Avoid transfer losses
+				desiredHeavyState = HeavyLoadState::Grid;
+			} else if (earlyInDayAndBatteryOK || heavyMode == HeavyLoadMode::AlwaysOn) {
+				// For HeavyLoadMode::OnWithSolar: Allow heavy appliances to run in the morning
+				// For HeavyLoadMode::AlwaysOn: No solar, no grid, but we must remain on
+				desiredHeavyState = HeavyLoadState::Inverter;
 			}
+
 			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 40)
 				desiredHeavyState = HeavyLoadState::Grid;
 		}
@@ -388,7 +388,7 @@ void Controller::Run() {
 						// guessing that the VM III does indeed keep it's phase locked to the grid, even when in SBU mode.
 						// At 50hz, each cycle is 20ms.
 						fprintf(stderr, "Pausing for 500 ms, after switching back to grid\n");
-						usleep(500 * 1000);
+						usleep(100 * 1000);
 					}
 					if (desiredSource == PowerSource::SBU)
 						LastSwitchToSBU = now;

@@ -125,7 +125,7 @@ void Monitor::Run() {
 		if (readOK && saveReading) {
 			lastSaveTime = time(nullptr);
 		}
-		sleep(1);
+		usleep(500 * 1000);
 	};
 
 	dbThread.join();
@@ -207,11 +207,11 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	// These numbers are roughly drawn from my Voltronic 5.6kw MKS 4 inverter (aka MKS IV),
 	// but tweaked to be more conservative.
 	bool outputOverload = false;
-	if (Average(now - 10, LoadWHistory) > (float) InverterSustainedW * 0.97f) {
+	if (Average(now - 6, LoadWHistory) > (float) InverterSustainedW * 0.97f) {
 		outputOverload = true;
-	} else if (Average(now - 5, LoadWHistory) > (float) InverterSustainedW * 1.3f) {
+	} else if (Average(now - 3, LoadWHistory) > (float) InverterSustainedW * 1.1f) {
 		outputOverload = true;
-	} else if (r.LoadW > (float) InverterSustainedW * 1.7f) {
+	} else if (r.LoadW > (float) InverterSustainedW * 1.5f) {
 		outputOverload = true;
 	}
 

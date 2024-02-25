@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string>
 #include <termios.h>
+#include <time.h>
 #include "inverter.h"
 
 /*

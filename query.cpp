@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <string>
+#include "json.hpp"
 #include "server/inverter.h"
 
 using namespace std;

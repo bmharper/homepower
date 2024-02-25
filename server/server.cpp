@@ -26,8 +26,9 @@ int main(int argc, char** argv) {
 	//bool               enablePowerSourceTimer     = false;
 	bool               showHelp = false;
 	homepower::Monitor monitor;
-	int                defaultInverterWatts    = monitor.InverterSustainedW;
-	int                defaultBatteryWattHours = monitor.BatteryWh;
+	int                defaultInverterWatts       = monitor.InverterSustainedW;
+	int                defaultBatteryWattHours    = monitor.BatteryWh;
+	int                defaultSampleWriteInterval = monitor.SampleWriteInterval;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
 		if (equals(arg, "-c")) {
@@ -75,6 +76,13 @@ int main(int argc, char** argv) {
 			monitor.SQLiteFilename = argv[i + 1];
 			monitor.DBMode         = homepower::DBModes::SQLite;
 			i++;
+		} else if (i + 1 < argc && (equals(arg, "-s"))) {
+			monitor.SampleWriteInterval = atoi(argv[i + 1]);
+			if (monitor.SampleWriteInterval < 1 || monitor.SampleWriteInterval > 1000) {
+				fprintf(stderr, "Invalid sample write interval. Must be between 1 and 1000.\n");
+				return 1;
+			}
+			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
 			showHelp = true;
@@ -96,6 +104,7 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.Inverter.Device.c_str());
 		fprintf(stderr, " -p <postgres>     Postgres connection string separated by colons host:port:db:user:password\n");
 		fprintf(stderr, " -l <sqlite>       Sqlite DB filename (specify /dev/null as SQLite filename to disable any DB writes)\n");
+		fprintf(stderr, " -s <samples>      Sample write interval. Can be raised to limit SSD writes. Default %d\n", defaultSampleWriteInterval);
 		return 1;
 	}
 

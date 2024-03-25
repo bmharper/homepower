@@ -349,6 +349,8 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 			Close();
 		}
 	} else {
+		// re-open port
+		Close();
 		res = Response::FailWriteFile;
 	}
 
@@ -377,6 +379,7 @@ string Inverter::RawToPrintable(const string& raw) {
 }
 
 std::string Inverter::DescribeResponse(Response r) {
+	// SYNC-RESPONSE-CODES
 	switch (r) {
 	case Response::OK: return "OK";
 	case Response::InvalidCommand: return "InvalidCommand";

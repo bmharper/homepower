@@ -14,6 +14,7 @@ namespace homepower {
 class Inverter {
 public:
 	// These are the process exit codes
+	// SYNC-RESPONSE-CODES
 	enum class Response {
 		OK               = 0,
 		InvalidCommand   = 1,

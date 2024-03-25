@@ -235,14 +235,22 @@ bool Inverter::Open() {
 
 	Close();
 
-	FD = open(Device.c_str(), O_RDWR | O_NONBLOCK);
+	if (Devices.size() > 1)
+		CurrentDevice = (CurrentDevice + 1) % Devices.size();
+
+	if (CurrentDevice < 0)
+		CurrentDevice = 0;
+
+	auto device = Devices[CurrentDevice];
+
+	FD = open(device.c_str(), O_RDWR | O_NONBLOCK);
 	if (FD == -1) {
-		fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", Device.c_str(), errno, strerror(errno));
+		fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", device.c_str(), errno, strerror(errno));
 		return false;
 	}
 
 	// If this looks like an RS232-to-USB adapter, then set the serial port parameters
-	if (Device.find("ttyUSB") != -1) {
+	if (device.find("ttyUSB") != -1) {
 		// 2400 is the only speed that seems to work
 		speed_t baud = B2400;
 

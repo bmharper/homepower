@@ -3,6 +3,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <algorithm>
 #include <time.h>
 
 #include "commands.h"

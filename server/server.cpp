@@ -5,18 +5,31 @@
 #include <unistd.h>
 #include <sstream>
 
+using namespace std;
+
 bool equals(const char* a, const char* b) {
 	return strcmp(a, b) == 0;
 }
 
-std::vector<std::string> split(const std::string& s, char delim) {
-	std::vector<std::string> elems;
-	std::stringstream        ss(s);
-	std::string              item;
-	while (std::getline(ss, item, delim)) {
+vector<string> split(const string& s, char delim) {
+	vector<string> elems;
+	stringstream   ss(s);
+	string         item;
+	while (getline(ss, item, delim)) {
 		elems.push_back(item);
 	}
 	return elems;
+}
+
+string join(const vector<string>& a, string delim) {
+	string s;
+	for (size_t i = 0; i < a.size(); i++) {
+		if (i > 0) {
+			s += delim;
+		}
+		s += a[i];
+	}
+	return s;
 }
 
 int main(int argc, char** argv) {
@@ -26,8 +39,9 @@ int main(int argc, char** argv) {
 	//bool               enablePowerSourceTimer     = false;
 	bool               showHelp = false;
 	homepower::Monitor monitor;
-	int                defaultInverterWatts    = monitor.InverterSustainedW;
-	int                defaultBatteryWattHours = monitor.BatteryWh;
+	int                defaultInverterWatts       = monitor.InverterSustainedW;
+	int                defaultBatteryWattHours    = monitor.BatteryWh;
+	int                defaultSampleWriteInterval = monitor.SampleWriteInterval;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
 		if (equals(arg, "-c")) {
@@ -42,7 +56,7 @@ int main(int argc, char** argv) {
 		} else if (equals(arg, "-d")) {
 			debug = true;
 		} else if (i + 1 < argc && (equals(arg, "-i") || equals(arg, "--inv"))) {
-			monitor.Inverter.Device = argv[i + 1];
+			monitor.Inverter.Devices = split(argv[i + 1], ',');
 			i++;
 		} else if (i + 1 < argc && (equals(arg, "-o"))) {
 			monitor.InverterSustainedW = atoi(argv[i + 1]);
@@ -75,6 +89,13 @@ int main(int argc, char** argv) {
 			monitor.SQLiteFilename = argv[i + 1];
 			monitor.DBMode         = homepower::DBModes::SQLite;
 			i++;
+		} else if (i + 1 < argc && (equals(arg, "-s"))) {
+			monitor.SampleWriteInterval = atoi(argv[i + 1]);
+			if (monitor.SampleWriteInterval < 1 || monitor.SampleWriteInterval > 1000) {
+				fprintf(stderr, "Invalid sample write interval. Must be between 1 and 1000.\n");
+				return 1;
+			}
+			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
 			showHelp = true;
@@ -92,10 +113,13 @@ int main(int argc, char** argv) {
 		fprintf(stderr, " -o <watts>        Invert output power in watts. Default %d\n", defaultInverterWatts);
 		fprintf(stderr, " -b <watt-hours>   Size of battery in watt-hours. Default %d\n", defaultBatteryWattHours);
 		fprintf(stderr, " -i --inv <device> Specify inverter device communication channel\n");
-		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0\n");
-		fprintf(stderr, "                   for RS232-to-USB adapter). Default %s\n", monitor.Inverter.Device.c_str());
+		fprintf(stderr, "                   (eg /dev/hidraw0 for direct USB, or /dev/ttyUSB0 for RS232-to-USB adapter).\n");
+		fprintf(stderr, "                   Multiple devices can be separated with commas (for redundancy),\n");
+		fprintf(stderr, "                   eg /dev/hidraw0,/dev/ttyUSB0\n");
+		fprintf(stderr, "                   Default device %s\n", join(monitor.Inverter.Devices, ",").c_str());
 		fprintf(stderr, " -p <postgres>     Postgres connection string separated by colons host:port:db:user:password\n");
 		fprintf(stderr, " -l <sqlite>       Sqlite DB filename (specify /dev/null as SQLite filename to disable any DB writes)\n");
+		fprintf(stderr, " -s <samples>      Sample write interval. Can be raised to limit SSD writes. Default %d\n", defaultSampleWriteInterval);
 		return 1;
 	}
 

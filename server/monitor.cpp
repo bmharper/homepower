@@ -135,7 +135,7 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 	auto                   res = Inverter.ExecuteT("QPIGS", record);
 	//printf("Reading QPIGS %f done\n", (double) clock() / (double) CLOCKS_PER_SEC);
 	if (res != Inverter::Response::OK) {
-		fprintf(stderr, "Failed to run inverter query. Error = %d\n", (int) res);
+		fprintf(stderr, "Failed to run inverter query. Error = %s\n", Inverter::DescribeResponse(res).c_str());
 		return false;
 	}
 	record.Heavy = IsHeavyOnInverter;

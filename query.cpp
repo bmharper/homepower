@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <string>
+#include "json.hpp"
 #include "server/inverter.h"
 
 using namespace std;
@@ -21,8 +22,8 @@ int main(int argc, char** argv) {
 		return (int) Inverter::Response::InvalidCommand;
 	}
 	Inverter inv;
-	inv.Device = argv[1];
-	string cmd = argv[2];
+	inv.Devices = {argv[1]};
+	string cmd  = argv[2];
 	string response;
 	auto   r = inv.Execute(cmd, response);
 	printf("%s\n", response.c_str());

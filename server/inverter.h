@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <string>
 
 namespace homepower {
@@ -13,6 +14,7 @@ namespace homepower {
 class Inverter {
 public:
 	// These are the process exit codes
+	// SYNC-RESPONSE-CODES
 	enum class Response {
 		OK               = 0,
 		InvalidCommand   = 1,
@@ -51,10 +53,11 @@ public:
 		bool        Heavy;
 	};
 
-	std::string Device            = "/dev/hidraw0"; // Name of device to open, such as /dev/hidraw0 or /dev/ttyUSB0
-	int         FD                = -1;             // File handle for talking to inverter
-	double      RecvTimeout       = 2;              // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
-	std::string DebugResponseFile = "";             // If not empty, then we don't actually talk to inverter, but read QPIGS response from this text file (this is for debugging/developing offline)
+	std::vector<std::string> Devices           = {"/dev/hidraw0"}; // Name of devices to use, such as /dev/hidraw0 or /dev/ttyUSB0. Multiple can be specified for redundancy.
+	int                      CurrentDevice     = -1;               // Counter that increments through Devices
+	int                      FD                = -1;               // File handle for talking to inverter
+	double                   RecvTimeout       = 2;                // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
+	std::string              DebugResponseFile = "";               // If not empty, then we don't actually talk to inverter, but read QPIGS response from this text file (this is for debugging/developing offline)
 
 	~Inverter();
 	bool Open();

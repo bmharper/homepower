@@ -5,10 +5,10 @@ namespace homepower {
 
 const char* PowerSourceToString(PowerSource v) {
 	switch (v) {
-	case PowerSource::Unknown: return "01"; // Unexpected code path
-	case PowerSource::USB: return "00";
-	case PowerSource::SUB: return "01";
-	case PowerSource::SBU: return "02";
+	case PowerSource::Unknown: return "POP01"; // Unexpected code path
+	case PowerSource::USB: return "POP00";
+	case PowerSource::SUB: return "POP01";
+	case PowerSource::SBU: return "POP02";
 	}
 }
 
@@ -23,10 +23,21 @@ const char* PowerSourceDescribe(PowerSource v) {
 
 const char* ChargerPriorityToString(ChargerPriority v) {
 	switch (v) {
-	case ChargerPriority::Utility: return "";
-	case ChargerPriority::SolarFirst: return "";
-	case ChargerPriority::UtilitySolar: return "";
-	case ChargerPriority::SolarOnly: return "";
+	case ChargerPriority::Unknown: return "PCP02"; // Unexpected code path
+	case ChargerPriority::Utility: return "PCP00";
+	case ChargerPriority::SolarFirst: return "PCP01";
+	case ChargerPriority::UtilitySolar: return "PCP02";
+	case ChargerPriority::SolarOnly: return "PCP03";
+	}
+}
+
+const char* ChargerPriorityDescribe(ChargerPriority v) {
+	switch (v) {
+	case ChargerPriority::Unknown: return "Unknown";
+	case ChargerPriority::Utility: return "Utility only";
+	case ChargerPriority::SolarFirst: return "Solar first";
+	case ChargerPriority::UtilitySolar: return "Solar and Utility";
+	case ChargerPriority::SolarOnly: return "Solar only";
 	}
 }
 

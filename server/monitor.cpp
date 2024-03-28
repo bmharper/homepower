@@ -8,39 +8,6 @@ using namespace std;
 
 namespace homepower {
 
-// Return the average value from the history buffer, going no further back than afterTime
-double Average(time_t afterTime, const RingBuffer<History>& history) {
-	double   sum      = 0;
-	unsigned nsamples = 0;
-	uint32_t idx      = history.Size() - 1;
-	while (true) {
-		if (idx == -1)
-			break;
-		auto sample = history.Peek(idx);
-		if (sample.Time < afterTime)
-			break;
-		sum += sample.Value;
-		nsamples++;
-		idx--;
-	}
-	return nsamples == 0 ? 0 : sum / (double) nsamples;
-}
-
-float Maximum(time_t afterTime, const RingBuffer<History>& history) {
-	float    maxv = -FLT_MAX;
-	uint32_t idx  = history.Size() - 1;
-	while (true) {
-		if (idx == -1)
-			break;
-		auto sample = history.Peek(idx);
-		if (sample.Time < afterTime)
-			break;
-		maxv = std::max(maxv, sample.Value);
-		idx--;
-	}
-	return maxv;
-}
-
 // trim space from end
 static string TrimSpace(const string& s) {
 	string x = s;
@@ -61,7 +28,6 @@ Monitor::Monitor() {
 	AvgBatteryP         = 0;
 	MustExit            = false;
 	IsHeavyOnInverter   = false;
-	CurrentPowerSource  = PowerSource::Unknown;
 	BatteryV            = 0;
 	BatteryP            = 0;
 	AvgLoadW            = 0;
@@ -69,6 +35,9 @@ Monitor::Monitor() {
 	// If Records is full, and we can't talk to the DB, then we drop records.
 	// A record is 272 bytes, so 256 * 275 = about 64kb
 	Records.Initialize(256);
+
+	// On a Raspberry Pi 1, it takes 0.222 milliseconds to compute an average over 4096 samples.
+	// On a Raspberry Pi 1, it takes 0.038 milliseconds to compute an average over 1024 samples.
 
 	// We want 5 minutes of history, so if we sample once every 2 seconds, then that is
 	// 30 * 5 = 150. Rounded up to next power of 2, we get 256.

@@ -104,16 +104,22 @@ int main(int argc, char** argv) {
 		monitor.Inverter.DebugResponseFile = "/home/ben/tmp/qpigs.txt";
 	}
 
+	//homepower::Controller controller(&monitor, false, true);
+	//controller.BakeChargeLimits();
+	//controller.PrintChargeLimits();
+
 	monitor.Start();
 	bool ok = true;
 	if (runController) {
 		homepower::Controller controller(&monitor, !debug, !debug);
 		controller.EnableAutoCharge = enableAutoCharge;
-		//controller.EnablePowerSourceTimer  = enablePowerSourceTimer;
 		controller.SetHeavyLoadState(homepower::HeavyLoadState::Grid);
-		controller.Start();
-		ok = homepower::RunHttpServer(controller);
-		controller.Stop();
+		if (controller.Start()) {
+			ok = homepower::RunHttpServer(controller);
+			controller.Stop();
+		} else {
+			ok = false;
+		}
 	} else {
 		// should ideally listen for SIGHUP or something
 		while (true) {

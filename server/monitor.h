@@ -10,17 +10,13 @@
 #include "commands.h"
 #include "inverter.h"
 #include "ringbuffer.h"
+#include "monitorUtils.h"
 
 namespace homepower {
 
 enum class DBModes {
 	Postgres,
 	SQLite,
-};
-
-struct History {
-	time_t Time;
-	float  Value;
 };
 
 class Monitor {
@@ -42,8 +38,7 @@ public:
 	std::atomic<float> BatteryP;                     // Battery charge percentage (0..100)
 	std::atomic<float> AvgBatteryP;                  // Average battery charge percentage (0..100) over last 10 minutes. The 10 minutes is important for BMS equalization at 100% SOC.
 
-	std::atomic<bool>        IsHeavyOnInverter;  // Set by Controller - true when heavy loads are on the inverter
-	std::atomic<PowerSource> CurrentPowerSource; // Set by Controller - the current invert power source mode (SBU/SUB)
+	std::atomic<bool> IsHeavyOnInverter; // Set by Controller - true when heavy loads are on the inverter
 
 	std::mutex          InverterLock; // This is held whenever talking to the Inverter
 	homepower::Inverter Inverter;     // You must hold InverterLock when talking to Inverter

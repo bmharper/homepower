@@ -8,15 +8,6 @@ using namespace std;
 
 namespace homepower {
 
-template <typename T>
-T Clamp(T v, T vmin, T vmax) {
-	if (v < vmin)
-		return vmin;
-	if (v > vmax)
-		return vmax;
-	return v;
-}
-
 const char* HeavyLoadModeToString(HeavyLoadMode mode) {
 	switch (mode) {
 	case HeavyLoadMode::AlwaysOn: return "AlwaysOn";
@@ -34,21 +25,6 @@ const char* HeavyLoadStateToString(HeavyLoadState mode) {
 	}
 	return "INVALID";
 	// unreachable
-}
-
-TimePoint TimePoint::Now(int timezoneOffsetMinutes) {
-	auto t = time(nullptr);
-	tm   tt;
-	gmtime_r(&t, &tt);
-	int sec = tt.tm_hour * 3600 + tt.tm_min * 60 + tt.tm_sec;
-	sec += timezoneOffsetMinutes * 60;
-	if (sec < 0)
-		sec += 24 * 3600;
-	sec = sec % (24 * 3600);
-	TimePoint tp;
-	tp.Hour   = Clamp(sec / 3600, 0, 23);
-	tp.Minute = Clamp((sec - tp.Hour * 3600) / 60, 0, 59);
-	return tp;
 }
 
 Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enableInverterStateChange) {
@@ -100,6 +76,9 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	MinBattery[22] = 55;
 	MinBattery[23] = 50;
 
+	MinCharge[0] = {TimePoint(8, 0), 45, 35};
+	MinCharge[1] = {TimePoint(16, 0), 94, 94};
+
 	time_t    t  = time(nullptr);
 	struct tm lt = {0};
 	localtime_r(&t, &lt);
@@ -118,28 +97,61 @@ Controller::~Controller() {
 	}
 }
 
-void Controller::Start() {
+bool Controller::Start() {
+	if (!BakeChargeLimits()) {
+		return false;
+	}
+
 	MustExit = false;
 	Thread   = thread([&]() {
         fprintf(stderr, "Controller started\n");
         fprintf(stderr, "Auto charge: %s\n", EnableAutoCharge ? "yes" : "no");
         if (EnableAutoCharge) {
-            fprintf(stderr, "Minimum battery charge percentage for each hour:\n");
-            for (int i = 0; i < 24; i++)
-                fprintf(stderr, "  %02dh: %02d%%\n", i, MinBattery[i]);
+            PrintChargeLimits();
         }
-        //if (EnablePowerSourceSwitch && EnablePowerSourceTimer) {
-        //    fprintf(stderr, "Switch to SUB at: %d:%02d\n", TimerSUB.Hour, TimerSUB.Minute);
-        //    fprintf(stderr, "Switch to SBU at: %d:%02d\n", TimerSBU.Hour, TimerSBU.Minute);
-        //}
         Run();
         fprintf(stderr, "Controller exited\n");
     });
+
+	return true;
 }
 
 void Controller::Stop() {
 	MustExit = true;
 	Thread.join();
+}
+
+bool Controller::BakeChargeLimits() {
+	if (NMinCharge < 2) {
+		fprintf(stderr, "Too few MinCharge points (%d < 2)", NMinCharge);
+		return false;
+	}
+	if (NMinCharge > MaxNMinChargePoints) {
+		fprintf(stderr, "Too many MinCharge points (%d > %d)", NMinCharge, MaxNMinChargePoints);
+		return false;
+	}
+	// Copy into flat arrays, so that we can use TimePoint::Interpolate()
+	for (int i = 0; i < NMinCharge; i++) {
+		if (i != 0 && MinCharge[i].Time <= MinCharge[i - 1].Time) {
+			fprintf(stderr, "MinCharge points must be in increasing order");
+			return false;
+		}
+		MinChargeTimePoints[i] = MinCharge[i].Time;
+		MinChargeSoft[i]       = MinCharge[i].Soft;
+		MinChargeHard[i]       = MinCharge[i].Hard;
+	}
+	return true;
+}
+
+void Controller::PrintChargeLimits() {
+	fprintf(stderr, "Minimum battery charge percentage for each hour:\n");
+	fprintf(stderr, "  Hour: Soft Hard\n");
+	for (int i = 0; i < 24; i++) {
+		float soft = TimePoint::Interpolate(TimePoint(i, 0), NMinCharge, MinChargeTimePoints, MinChargeSoft);
+		float hard = TimePoint::Interpolate(TimePoint(i, 0), NMinCharge, MinChargeTimePoints, MinChargeHard);
+		fprintf(stderr, "  %02dh:  %02.0f%%  %02.0f%%\n", i, soft, hard);
+		//fprintf(stderr, "  %02dh: %02d%%\n", i, MinBattery[i]);
+	}
 }
 
 void Controller::SetHeavyLoadMode(HeavyLoadMode m) {
@@ -207,17 +219,14 @@ void Controller::Run() {
 		time_t         now               = time(nullptr);
 		auto           nowP              = Now();
 		HeavyLoadState desiredHeavyState = HeavyLoadState::Grid;
-		PowerSource    desiredSource     = PowerSource::SUB;
 
-		bool  monitorIsAlive  = Monitor->IsInitialized;
-		bool  isSolarTime     = nowP > SolarOnAt && nowP < SolarOffAt;
-		float avgSolarV       = Monitor->AvgSolarV;
-		int   batteryP        = (int) Monitor->BatteryP;
-		float avgBatteryP     = Monitor->AvgBatteryP;
-		bool  hasGridPower    = Monitor->HasGridPower;
-		bool  haveSolarHeavyV = avgSolarV > MinSolarHeavyV;
-		float avgSolarW       = Monitor->AvgSolarW;
-		float avgLoadW        = Monitor->AvgLoadW;
+		bool  monitorIsAlive = Monitor->IsInitialized;
+		float avgSolarV      = Monitor->AvgSolarV;
+		float batteryP       = Monitor->BatteryP;
+		float avgBatteryP    = Monitor->AvgBatteryP;
+		bool  hasGridPower   = Monitor->HasGridPower;
+		float avgSolarW      = Monitor->AvgSolarW;
+		float avgLoadW       = Monitor->AvgLoadW;
 
 		HeavyLoadLock.lock();
 		auto heavyMode = CurrentHeavyLoadMode;
@@ -232,7 +241,7 @@ void Controller::Run() {
 			// only to have to charge it later in the evening. In this situations, we'd rather use grid power to
 			// reduce the charging/discharging losses.
 			// In my house, heavy loads in the afternoon are almost always the airconditioners.
-			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45;
+			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45.0f;
 
 			if (solarExceedsLoads) {
 				// Use solar power for heavy loads
@@ -246,7 +255,7 @@ void Controller::Run() {
 				desiredHeavyState = HeavyLoadState::Inverter;
 			}
 
-			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 40)
+			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 40.0f)
 				desiredHeavyState = HeavyLoadState::Grid;
 		}
 
@@ -262,25 +271,40 @@ void Controller::Run() {
 
 		if (monitorIsAlive && now - lastStatus > 10 * 60) {
 			lastStatus = now;
-			fprintf(stderr, "isSolarTime: %s, hasGridPower: %s, haveSolarHeavyV(%.1f): %s, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
-			        isSolarTime ? "yes" : "no", hasGridPower ? "yes" : "no", avgSolarV, haveSolarHeavyV ? "yes" : "no",
+			fprintf(stderr, "hasGridPower: %s, avgSolarV: %.1f, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
+			        hasGridPower ? "yes" : "no", avgSolarV,
 			        Monitor->IsOutputOverloaded ? "yes" : "no",
 			        Monitor->IsBatteryOverloaded ? "yes" : "no",
 			        nowP.Hour, nowP.Minute);
 			fflush(stderr);
 		}
 
-		// Figure out whether we should be charging from grid or not
-		desiredSource = CurrentPowerSource;
+		// Figure out whether we should be charging from grid or not, and running loads from grid or battery
+		PowerSource     desiredSource         = CurrentPowerSource;
+		ChargerPriority desiredChargePriority = CurrentChargePriority;
+		bool            wantSoftSwitch        = false; // True if we're below our soft threshold and want to switch
+		bool            wantHardSwitch        = false; // True if we're below our hard threshold and want to switch
 
 		if (monitorIsAlive && EnableAutoCharge) {
-			int goalBatteryP = MinBattery[nowP.Hour];
-			if (ChargeStartedInHour == nowP.Hour) {
-				// If we hit our trigger low battery threshold, then charge up until we're at least 5% above the trigger threshold,
-				// and until we're charged up enough to not hit the charge threshold on the next hour.
-				int currentPlus5 = min(100, MinBattery[nowP.Hour] + 5);
-				int nextHour     = (nowP.Hour + 1) % 24;
-				goalBatteryP     = max(currentPlus5, MinBattery[nextHour]);
+			float softBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
+			float hardBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeHard);
+
+			//int goalBatteryP = MinBattery[nowP.Hour];
+			//if (ChargeStartedInHour == nowP.Hour) {
+			//	// If we hit our trigger low battery threshold, then charge up until we're at least 5% above the trigger threshold,
+			//	// and until we're charged up enough to not hit the charge threshold on the next hour.
+			//	int currentPlus5 = min(100, MinBattery[nowP.Hour] + 5);
+			//	int nextHour     = (nowP.Hour + 1) % 24;
+			//	goalBatteryP     = max(currentPlus5, MinBattery[nextHour]);
+			//}
+
+			// If we hit either of our thresholds within the last 30 minutes, then raise the target
+			// to ensure that we overshoot it by some margin. Otherwise we ping pong along the bottom.
+			if (now - LastSoftSwitch < 30 * 60) {
+				softBatteryGoal = std::min(softBatteryGoal + 10, 100.0f);
+			}
+			if (now - LastHardSwitch < 30 * 60) {
+				hardBatteryGoal = std::min(hardBatteryGoal + 10, 100.0f);
 			}
 
 			if (avgBatteryP >= 100.0f)
@@ -288,17 +312,20 @@ void Controller::Run() {
 
 			time_t secondsSinceLastEqualize = now - LastEqualizeAt;
 
-			if (nowP.Hour >= 17 || nowP.Hour <= 7) {
+			if (nowP.Hour >= 17) {
 				// Ensure that we give the battery a chance to balance the cells every day, regardless of the SOC hourly goal.
 				// Note that it is vital that we alter goalBatteryP up here, before any of the other decisions are made,
 				// otherwise we can end up in a situation where we switch to SUB mode, and then immediately switch back to SBU,
 				// because both sides of our "let's charge" and "we have enough" will be true at the same time.
 				// It was due to this original bug that we added the MinSecondsBetweenSBUSwitches protection logic, to
 				// prevent flipping between states too frequently. The inverter DID NOT enjoy this, and kept restarting itself.
-				if (secondsSinceLastEqualize >= 24 * 3600) {
+				// We somewhat arbitrarily choose to do equalization after 5pm, because that happens to coincide with the time
+				// when we expect the battery SOC to be close to 100%
+				if (secondsSinceLastEqualize >= HoursBetweenEqualize * 3600) {
 					// Ensure that we stay in charging mode until we're equalized.
-					// The SOC can never be 200, so this will force SUB mode.
-					goalBatteryP = max(goalBatteryP, 200);
+					// The SOC can never be 200, so this will force SUB and Grid Charge modes.
+					softBatteryGoal = max(softBatteryGoal, 200.0f);
+					hardBatteryGoal = max(hardBatteryGoal, 200.0f);
 				}
 			}
 
@@ -306,6 +333,7 @@ void Controller::Run() {
 			// then they no longer use the solar power for anything besides running the inverter itself (around 50W).
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
 
+			/*
 			bool earlyInDayOK = false;
 			bool lateInDayOK  = false;
 			bool endOfDayOK   = false;
@@ -328,27 +356,41 @@ void Controller::Run() {
 				// provided we're fully charged.
 				endOfDayOK = avgBatteryP >= 100.0f;
 			}
+			*/
 
 			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
 				lastChargeMsg = now;
-				fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s, sinceEqualize: %.0f\n",
-				        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, avgSolarW, avgLoadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
+				//fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s, sinceEqualize: %.0f\n",
+				//        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, avgSolarW, avgLoadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
+				fprintf(stderr, "Mode: %s, SwitchPowerSourceAt: %d, SwitchChargerPriorityAt: %d, softBatteryGoal: %.1f, hardBatteryGoal: %.1f, batteryP: %.1f\n",
+				        PowerSourceDescribe(CurrentPowerSource), int(now - SwitchPowerSourceAt), int(now - SwitchChargerPriorityAt), softBatteryGoal, hardBatteryGoal, batteryP);
+				fprintf(stderr, "solarW: %.0f, loadW: %.0f, sinceEqualize: %.0f\n", avgSolarW, avgLoadW, (float) secondsSinceLastEqualize);
 				fflush(stderr);
 			}
 
-			if (CurrentPowerSource != PowerSource::SUB && batteryP < goalBatteryP) {
-				// Our battery is too low - switch to SUB
-				fprintf(stderr, "Battery is low (%d < %d), switching to SUB\n", batteryP, goalBatteryP);
-				ChargeStartedInHour = nowP.Hour;
-				desiredSource       = PowerSource::SUB;
-			} else if (CurrentPowerSource != PowerSource::SBU && (earlyInDayOK || lateInDayOK || endOfDayOK)) {
-				// We are charged enough - switch to SBU.
-				// Note that we only switch back to SBU once we're either fully charge at the end of the day, or we have
-				// enough solar power to power our average daily loads. Without these final conditions, we would flip flop
-				// between SBU and SUB on a rainy day.
-				fprintf(stderr, "Battery is sufficient (%d >= %d) (SolarW = %.1f, LoadW = %.1f), switching to SBU\n", batteryP, goalBatteryP, avgSolarW, avgLoadW);
-				ChargeStartedInHour = -1;
-				desiredSource       = PowerSource::SBU;
+			if (batteryP < hardBatteryGoal) {
+				// We've hit our hard limit. We must charge at all costs.
+				desiredSource         = PowerSource::SUB;
+				desiredChargePriority = ChargerPriority::UtilitySolar;
+				wantHardSwitch        = true;
+				if (CurrentPowerSource != desiredSource || CurrentChargePriority != desiredChargePriority) {
+					fprintf(stderr, "Battery is lower than hard limit (%.1f < %.1f), switching to SUB and Grid + Solar Charge\n", batteryP, hardBatteryGoal);
+				}
+			} else if (batteryP < softBatteryGoal) {
+				// We've hit our soft limit. Switch loads to grid, to preserve battery cycling
+				desiredSource         = PowerSource::SUB;
+				desiredChargePriority = ChargerPriority::SolarOnly;
+				wantSoftSwitch        = true;
+				if (CurrentPowerSource != desiredSource || CurrentChargePriority != desiredChargePriority) {
+					fprintf(stderr, "Battery is lower than soft limit (%.1f < %.1f), switching to SUB and Solar Only\n", batteryP, softBatteryGoal);
+				}
+			} else {
+				// Our battery charge is good. We can switch to battery + solar only.
+				desiredSource         = PowerSource::SBU;
+				desiredChargePriority = ChargerPriority::SolarOnly;
+				if (CurrentPowerSource != desiredSource || CurrentChargePriority != desiredChargePriority) {
+					fprintf(stderr, "Battery is good (%.1f >= %.1f), switching to SBU and Solar Only\n", batteryP, softBatteryGoal);
+				}
 			}
 		}
 
@@ -357,11 +399,67 @@ void Controller::Run() {
 		auto specialRequest = (PowerSource) ChangePowerSourceMsg.load();
 
 		if (specialRequest != PowerSource::Unknown) {
-			desiredSource        = specialRequest;
-			ChargeStartedInHour  = -1;
+			// Ignore this - doesn't make sense anymore with auto charging modes.
+			//desiredSource        = specialRequest;
+			//ChargeStartedInHour  = -1;
 			ChangePowerSourceMsg = (int) PowerSource::Unknown; // signal that we've made the desired change (aka reset the atomic toggle)
 		}
 
+		bool switchSuccess = false;
+
+		if (desiredChargePriority != CurrentChargePriority &&
+		    now - SwitchChargerPriorityAt > 5 * 60 &&
+		    now - LastAttemptedSwitch > 10 &&
+		    monitorIsAlive) {
+			fprintf(stderr, "Switching charger priority from %s to %s\n", ChargerPriorityToString(CurrentChargePriority), ChargerPriorityToString(desiredChargePriority));
+			LastAttemptedSwitch = now;
+			bool ok             = true;
+			if (!EnableInverterStateChange) {
+				fprintf(stderr, "EnableInverterStateChange is false, so not actually running command\n");
+			} else {
+				ok = Monitor->RunInverterCmd(ChargerPriorityToString(desiredChargePriority));
+			}
+			if (ok) {
+				switchSuccess           = true;
+				CurrentChargePriority   = desiredChargePriority;
+				SwitchChargerPriorityAt = now;
+			}
+		}
+
+		if (desiredSource != CurrentPowerSource &&
+		    now - SwitchPowerSourceAt > 5 * 60 &&
+		    now - LastAttemptedSwitch > 10 &&
+		    monitorIsAlive) {
+			fprintf(stderr, "Switching charger source from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
+			LastAttemptedSwitch = now;
+			bool ok             = true;
+			if (!EnableInverterStateChange) {
+				fprintf(stderr, "EnableInverterStateChange is false, so not actually running command\n");
+			} else {
+				ok = Monitor->RunInverterCmd(PowerSourceToString(desiredSource));
+			}
+			if (ok) {
+				if (CurrentPowerSource == PowerSource::SBU && desiredSource == PowerSource::SUB) {
+					// Pause briefly before switching back to grid. The idea here is that if we're going to
+					// switch our heavy loads from battery to grid, then we want to make sure that we're synchronized
+					// with the grid. As far as I know, these inverters remain in sync, even if they're in SBU mode,
+					// so this shouldn't really be necessary.
+					fprintf(stderr, "Pausing for 100 ms, after switching back to grid\n");
+					usleep(100 * 1000);
+				}
+				switchSuccess       = true;
+				CurrentPowerSource  = desiredSource;
+				SwitchPowerSourceAt = now;
+			}
+		}
+
+		if (switchSuccess && wantSoftSwitch)
+			LastSoftSwitch = now;
+
+		if (switchSuccess && wantHardSwitch)
+			LastHardSwitch = now;
+
+		/*
 		if (desiredSource != CurrentPowerSource && monitorIsAlive) {
 			bool skip  = false;
 			bool cmdOK = false;
@@ -376,7 +474,7 @@ void Controller::Run() {
 				cmdOK = true;
 			} else {
 				fprintf(stderr, "Switching inverter from %s to %s\n", PowerSourceDescribe(CurrentPowerSource), PowerSourceDescribe(desiredSource));
-				cmdOK = Monitor->RunInverterCmd(string("POP") + PowerSourceToString(desiredSource));
+				cmdOK = Monitor->RunInverterCmd(PowerSourceToString(desiredSource));
 			}
 			if (!skip) {
 				if (cmdOK) {
@@ -399,6 +497,7 @@ void Controller::Run() {
 				}
 			}
 		}
+		*/
 
 		if (desiredHeavyState != CurrentHeavyLoadState) {
 			if (desiredHeavyState == HeavyLoadState::Grid || desiredHeavyState == HeavyLoadState::Off || HeavyCooloff.IsGood(now)) {

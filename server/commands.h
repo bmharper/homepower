@@ -10,6 +10,7 @@ enum class PowerSource {
 };
 
 enum class ChargerPriority {
+	Unknown,
 	Utility,
 	SolarFirst,
 	UtilitySolar,

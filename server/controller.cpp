@@ -288,6 +288,8 @@ void Controller::Run() {
 		if (monitorIsAlive && EnableAutoCharge) {
 			float softBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
 			float hardBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeHard);
+			softBatteryGoal       = Clamp(softBatteryGoal, 0.0f, 100.0f);
+			hardBatteryGoal       = Clamp(hardBatteryGoal, 0.0f, 100.0f);
 
 			//int goalBatteryP = MinBattery[nowP.Hour];
 			//if (ChargeStartedInHour == nowP.Hour) {
@@ -298,13 +300,13 @@ void Controller::Run() {
 			//	goalBatteryP     = max(currentPlus5, MinBattery[nextHour]);
 			//}
 
-			// If we hit either of our thresholds within the last 30 minutes, then raise the target
+			// If we hit either of our thresholds within the last hour, then raise the target
 			// to ensure that we overshoot it by some margin. Otherwise we ping pong along the bottom.
-			if (now - LastSoftSwitch < 30 * 60) {
-				softBatteryGoal = std::min(softBatteryGoal + 10, 100.0f);
+			if (now - LastSoftSwitch < 60 * 60) {
+				softBatteryGoal = Clamp(softBatteryGoal + 10.0f, 0.0f, 100.0f);
 			}
-			if (now - LastHardSwitch < 30 * 60) {
-				hardBatteryGoal = std::min(hardBatteryGoal + 10, 100.0f);
+			if (now - LastHardSwitch < 60 * 60) {
+				hardBatteryGoal = Clamp(hardBatteryGoal + 10.0f, 0.0f, 100.0f);
 			}
 
 			if (avgBatteryP >= 100.0f)
@@ -377,7 +379,12 @@ void Controller::Run() {
 					fprintf(stderr, "Battery is lower than hard limit (%.1f < %.1f), switching to SUB and Grid + Solar Charge\n", batteryP, hardBatteryGoal);
 				}
 			} else if (batteryP < softBatteryGoal) {
-				// We've hit our soft limit. Switch loads to grid, to preserve battery cycling
+				// We've hit our soft limit. Switch loads to grid, to avoid battery cycling.
+				// It's more efficient to power loads directly from the grid, then using the
+				// grid to charge the battery, and then powering loads from the battery. I don't
+				// know what the full round-trip efficiency is, but voltronic inverter claim
+				// 90% peak, and I don't know if that's round-trip or one way. I suspect the full
+				// round trip is more like 80%, and that doesn't include battery wear and tear.
 				desiredSource         = PowerSource::SUB;
 				desiredChargePriority = ChargerPriority::SolarOnly;
 				wantSoftSwitch        = true;

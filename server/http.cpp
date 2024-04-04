@@ -13,12 +13,6 @@ bool RunHttpServer(Controller& controller) {
 				controller.SetHeavyLoadState(HeavyLoadState::Grid);
 			else if (r->Path == "/switch/off")
 				controller.SetHeavyLoadState(HeavyLoadState::Off);
-			else if (r->Path == "/mode/sub")
-				controller.ChangePowerSource(PowerSource::SUB);
-			else if (r->Path == "/mode/sbu")
-				controller.ChangePowerSource(PowerSource::SBU);
-			else if (r->Path == "/mode/usb")
-				controller.ChangePowerSource(PowerSource::USB);
 			else if (r->Path == "/heavy/solar")
 				controller.SetHeavyLoadMode(HeavyLoadMode::OnWithSolar);
 			else if (r->Path == "/heavy/always")

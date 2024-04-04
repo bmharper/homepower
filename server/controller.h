@@ -42,11 +42,10 @@ public:
 	int  GpioPinInverter           = 18;    // GPIO/BCM pin number set to 1 when switching heavy loads to inverter
 	int  SwitchSleepMilliseconds   = 10;    // 50hz = 20ms cycle time. Hager ESC225 have 25ms closing delay, and 15ms opening delay.
 	int  TimezoneOffsetMinutes     = 120;   // 120 = UTC+2 (Overridden by constructor)
-	bool EnableAutoCharge          = false; // Enable switching between SBU and SUB depending on battery charge
-	int  MinBattery[24]            = {};    // Minimum battery charge percentage in any hour of the day (value from 0 to 100) --- being replaced by MinChargeSoft/MinChargeHard
+	bool EnableAutoCharge          = false; // Enable switching grid/inverter modes, and solar/grid charge mode, depending on battery SOC
 	int  HoursBetweenEqualize      = 24;    // Maximum hours between battery equalization. Equalization implies being at 100% SOC for 10 minutes.
 
-	// This is replacing MinBattery
+	// Minimum charge curve
 	static const int MaxNMinChargePoints = 30;
 	int              NMinCharge          = 2;        // Minimum 2, Maximum MaxNMinChargePoints (30)
 	MinChargePoint   MinCharge[MaxNMinChargePoints]; // We interpolate between these points. If battery charge is below this, then we run loads off grid instead of battery
@@ -57,7 +56,6 @@ public:
 	void Stop();
 	void SetHeavyLoadMode(HeavyLoadMode m);
 	void SetHeavyLoadState(HeavyLoadState m, bool forceWrite = false);
-	void ChangePowerSource(PowerSource source);
 	bool BakeChargeLimits();
 	void PrintChargeLimits();
 
@@ -70,16 +68,14 @@ private:
 	PowerSource         CurrentPowerSource    = PowerSource::Unknown;
 	ChargerPriority     CurrentChargePriority = ChargerPriority::Unknown;
 	Cooloff             HeavyCooloff;
-	std::mutex          HeavyLoadLock;               // Guards access to CurrentHeavyLoadMode and CurrentHeavyLoadState
-	std::atomic<int>    ChangePowerSourceMsg;        // Used by HTTP to signal to controller thread to change power source
-	time_t              LastEqualizeAt          = 0; // Time when we last equalized (100% SOC for 10 minutes)
-	time_t              SwitchPowerSourceAt     = 0; // Time when we last switched the power source
-	time_t              SwitchChargerPriorityAt = 0; // Time when we last switched the charger priority
-	time_t              LastAttemptedSwitch     = 0; // Last time we attempted to switch power source or charger priority
-	time_t              LastSoftSwitch          = 0; // Time when we last changed modes because battery was lower than soft limit
-	time_t              LastHardSwitch          = 0; // Time when we last changed modes because battery was lower than hard limit
-	//int                 ChargeStartedInHour = -1; // Hour when we decided that we needed to start charging again
-	//time_t              LastSwitchToSBU     = 0;  // Time when we last switched to SBU
+	std::mutex          HeavyLoadLock;                  // Guards access to CurrentHeavyLoadMode and CurrentHeavyLoadState
+	time_t              LastEqualizeAt             = 0; // Time when we last equalized (100% SOC for 10 minutes)
+	time_t              SwitchPowerSourceAt        = 0; // Time when we last switched the power source
+	time_t              SwitchChargerPriorityAt    = 0; // Time when we last switched the charger priority
+	time_t              LastAttemptedSourceSwitch  = 0; // Last time we attempted to switch power source
+	time_t              LastAttemptedChargerSwitch = 0; // Last time we attempted to switch charger priority
+	time_t              LastSoftSwitch             = 0; // Time when we last changed modes because battery was lower than soft limit
+	time_t              LastHardSwitch             = 0; // Time when we last changed modes because battery was lower than hard limit
 
 	// The following 3 arrays are parallel
 	TimePoint MinChargeTimePoints[MaxNMinChargePoints];

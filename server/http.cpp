@@ -17,7 +17,15 @@ bool RunHttpServer(Controller& controller) {
 				controller.SetHeavyLoadMode(HeavyLoadMode::OnWithSolar);
 			else if (r->Path == "/heavy/always")
 				controller.SetHeavyLoadMode(HeavyLoadMode::AlwaysOn);
-			else {
+			else if (r->Path == "/storm/activate") {
+				controller.SetStormMode(24);
+				w.SetStatusAndBody(200, "Storm mode activated for the next 24 hours");
+				return;
+			} else if (r->Path == "/storm/cancel") {
+				controller.SetStormMode(0);
+				w.SetStatusAndBody(200, "Storm mode cancelled");
+				return;
+			} else {
 				w.SetStatusAndBody(404, "Unknown POST request");
 				return;
 			}

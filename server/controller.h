@@ -44,6 +44,7 @@ public:
 	int  TimezoneOffsetMinutes     = 120;   // 120 = UTC+2 (Overridden by constructor)
 	bool EnableAutoCharge          = false; // Enable switching grid/inverter modes, and solar/grid charge mode, depending on battery SOC
 	int  HoursBetweenEqualize      = 24;    // Maximum hours between battery equalization. Equalization implies being at 100% SOC for 10 minutes.
+	//TimePoint EqualizeAfter             = {17, 0}; // We try to equalize after this time
 
 	// Minimum charge curve
 	static const int MaxNMinChargePoints = 30;
@@ -56,6 +57,7 @@ public:
 	void Stop();
 	void SetHeavyLoadMode(HeavyLoadMode m);
 	void SetHeavyLoadState(HeavyLoadState m, bool forceWrite = false);
+	void SetStormMode(int hours);
 	bool BakeChargeLimits();
 	void PrintChargeLimits();
 
@@ -76,6 +78,7 @@ private:
 	time_t              LastAttemptedChargerSwitch = 0; // Last time we attempted to switch charger priority
 	time_t              LastSoftSwitch             = 0; // Time when we last changed modes because battery was lower than soft limit
 	time_t              LastHardSwitch             = 0; // Time when we last changed modes because battery was lower than hard limit
+	std::atomic<time_t> StormModeUntil;                 // Remain in storm mode until this time
 
 	// The following 3 arrays are parallel
 	TimePoint MinChargeTimePoints[MaxNMinChargePoints];

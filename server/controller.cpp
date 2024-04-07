@@ -36,6 +36,7 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	// on for months, without a restart.
 	Monitor                   = monitor;
 	MustExit                  = false;
+	StormModeUntil            = 0;
 	EnableGpio                = enableGpio;
 	EnableInverterStateChange = enableInverterStateChange;
 	if (EnableGpio) {
@@ -50,8 +51,19 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	}
 	CurrentHeavyLoadState = HeavyLoadState::Off;
 
+	// Some principles:
+	// You want your max charge point to be 90 or less, so that the +10 that we add as a buffer
+	// when charging, does not exceed 100. The reason its bad if you exceed 100, is that you
+	// can then be in a situation where the battery is full, but you're in SUB mode, so you're
+	// just throwing away all your PV energy. So long as your battery goal remains above 100,
+	// you'll remain in this state. So we rather make the late afternoon battery goal 90.
+	// If we kick into charge mode, we will at least exit it once we hit 100.
+	//
+	// Our equalizer acts as a stopgap for this wonky logic, by ensuring that we charge to
+	// 100% after 5pm. Ideally we wouldn't need that, but I haven't thought of a way yet
+	// to avoid ping-ponging late in the afternoon without this technique.
 	MinCharge[0] = {TimePoint(8, 0), 45, 35};
-	MinCharge[1] = {TimePoint(16, 0), 94, 94};
+	MinCharge[1] = {TimePoint(16, 30), 90, 90};
 
 	time_t    t  = time(nullptr);
 	struct tm lt = {0};
@@ -260,6 +272,12 @@ void Controller::Run() {
 			softBatteryGoal       = Clamp(softBatteryGoal, 0.0f, 100.0f);
 			hardBatteryGoal       = Clamp(hardBatteryGoal, 0.0f, 100.0f);
 
+			bool isStormMode = StormModeUntil > now;
+			if (isStormMode) {
+				softBatteryGoal = max(softBatteryGoal, 90.0f);
+				hardBatteryGoal = max(hardBatteryGoal, 80.0f);
+			}
+
 			// If we hit either of our thresholds within the last hour, then raise the target
 			// to ensure that we overshoot it by some margin. Otherwise we ping pong along the bottom.
 			// My initial instinct here was to clamp the goals to 100%. That turns out to be a bad
@@ -278,6 +296,9 @@ void Controller::Run() {
 				LastEqualizeAt = now;
 
 			time_t secondsSinceLastEqualize = now - LastEqualizeAt;
+			//bool   needEqualizeSoft         = secondsSinceLastEqualize >= HoursBetweenEqualize * 3600;     // 1x maximum period has passed
+			//bool   needEqualizeHard         = secondsSinceLastEqualize >= HoursBetweenEqualize * 3600 * 2; // 2x maximum period has passed
+			//bool isEqualizeTime = nowP.AbsoluteMinute	()
 
 			if (nowP.Hour >= 17 && secondsSinceLastEqualize >= HoursBetweenEqualize * 3600) {
 				// Ensure that we give the battery a chance to balance the cells, regardless of the SOC hourly goal.
@@ -404,6 +425,15 @@ void Controller::Run() {
 
 TimePoint Controller::Now() {
 	return TimePoint::Now(TimezoneOffsetMinutes);
+}
+
+void Controller::SetStormMode(int hours) {
+	if (hours <= 0) {
+		StormModeUntil = 0;
+		return;
+	}
+	time_t now     = time(nullptr);
+	StormModeUntil = now + hours * 3600;
 }
 
 } // namespace homepower

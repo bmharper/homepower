@@ -285,7 +285,7 @@ bool Monitor::CommitReadings(RingBuffer<Inverter::Record_QPIGS>& records) {
 			sql += create + " ";
 		// We assume that our SQLite DB is on a ramdisk, so we limit it's size
 		sql += "DELETE FROM readings WHERE time < ";
-		AddDbl(sql, now - 3 * 24 * 3600, false);
+		AddDbl(sql, now - 30 * 24 * 3600, false);
 		sql += "; ";
 	}
 	sql += "INSERT INTO readings (";

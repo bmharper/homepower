@@ -325,7 +325,10 @@ void Controller::Run() {
 				//        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, avgSolarW, avgLoadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
 				fprintf(stderr, "Mode: %s, SwitchPowerSourceAt: %d, SwitchChargerPriorityAt: %d, softBatteryGoal: %.1f, hardBatteryGoal: %.1f, batteryP: %.1f\n",
 				        PowerSourceDescribe(CurrentPowerSource), int(now - SwitchPowerSourceAt), int(now - SwitchChargerPriorityAt), softBatteryGoal, hardBatteryGoal, batteryP);
-				fprintf(stderr, "solarW: %.0f, loadW: %.0f, sinceEqualize: %.0f\n", avgSolarW, avgLoadW, (float) secondsSinceLastEqualize);
+				fprintf(stderr, "LastSoftSwitch: %d, LastHardSwitch: %d, LastAttemptedSourceSwitch: %d, LastAttemptedChargerSwitch: %d\n",
+				        int(now - LastSoftSwitch), int(now - LastHardSwitch), int(now - LastAttemptedSourceSwitch), int(now - LastAttemptedChargerSwitch));
+				fprintf(stderr, "Storm mode remaining: %d\n", int(StormModeUntil - now));
+				fprintf(stderr, "solarW: %.0f, loadW: %.0f, sinceEqualize: %d\n", avgSolarW, avgLoadW, (int) secondsSinceLastEqualize);
 				fflush(stderr);
 			}
 

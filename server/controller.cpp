@@ -122,6 +122,14 @@ bool Controller::BakeChargeLimits() {
 			fprintf(stderr, "MinCharge points must be in increasing order");
 			return false;
 		}
+		if (MinCharge[i].Soft < MinCharge[i].Hard) {
+			// I added this check when I wrote the "if" statement where we check if we're below
+			// our hard limit, and inside there, we say "wantSoft = true", because our assumption
+			// is that if we've hit our hard limit, then we've also hit our soft limit. So I just
+			// don't want to violate that assumption, even if the results are fairly benign.
+			fprintf(stderr, "MinCharge soft limit must be greater than or equal to hard limit");
+			return false;
+		}
 		MinChargeTimePoints[i] = MinCharge[i].Time;
 		MinChargeSoft[i]       = MinCharge[i].Soft;
 		MinChargeHard[i]       = MinCharge[i].Hard;
@@ -252,7 +260,7 @@ void Controller::Run() {
 
 		if (monitorIsAlive && now - lastStatus > 10 * 60) {
 			lastStatus = now;
-			fprintf(stderr, "hasGridPower: %s, avgSolarV: %.1f, OutputOverloaded: %s, BatteryOverloaded: %s (time %d:%02d)\n",
+			fprintf(stderr, "hasGridPower: %s, avgSolarV: %.1f, OutputOverloaded: %s, BatteryOverloaded: %s, time: %d:%02d\n",
 			        hasGridPower ? "yes" : "no", avgSolarV,
 			        Monitor->IsOutputOverloaded ? "yes" : "no",
 			        Monitor->IsBatteryOverloaded ? "yes" : "no",
@@ -267,10 +275,12 @@ void Controller::Run() {
 		bool            wantHardSwitch        = false; // True if we're below our hard threshold and want to switch
 
 		if (monitorIsAlive && EnableAutoCharge) {
-			float softBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
-			float hardBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeHard);
-			softBatteryGoal       = Clamp(softBatteryGoal, 0.0f, 100.0f);
-			hardBatteryGoal       = Clamp(hardBatteryGoal, 0.0f, 100.0f);
+			float softBatteryGoal    = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
+			float hardBatteryGoal    = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeHard);
+			float rawSoftBatteryGoal = softBatteryGoal;
+			float rawHardBatteryGoal = hardBatteryGoal;
+			softBatteryGoal          = Clamp(softBatteryGoal, 0.0f, 100.0f);
+			hardBatteryGoal          = Clamp(hardBatteryGoal, 0.0f, 100.0f);
 
 			bool isStormMode = StormModeUntil > now;
 			if (isStormMode) {
@@ -323,8 +333,9 @@ void Controller::Run() {
 				lastChargeMsg = now;
 				//fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s, sinceEqualize: %.0f\n",
 				//        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, avgSolarW, avgLoadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
-				fprintf(stderr, "Mode: %s, SwitchPowerSourceAt: %d, SwitchChargerPriorityAt: %d, softBatteryGoal: %.1f, hardBatteryGoal: %.1f, batteryP: %.1f\n",
-				        PowerSourceDescribe(CurrentPowerSource), int(now - SwitchPowerSourceAt), int(now - SwitchChargerPriorityAt), softBatteryGoal, hardBatteryGoal, batteryP);
+				fprintf(stderr, "Mode: %s, SwitchPowerSourceAt: %d, SwitchChargerPriorityAt: %d, softBatteryGoal: %.1f (%.1f), hardBatteryGoal: %.1f (%.1f), batteryP: %.1f\n",
+				        PowerSourceDescribe(CurrentPowerSource), int(now - SwitchPowerSourceAt), int(now - SwitchChargerPriorityAt),
+				        softBatteryGoal, rawSoftBatteryGoal, hardBatteryGoal, rawHardBatteryGoal, batteryP);
 				fprintf(stderr, "LastSoftSwitch: %d, LastHardSwitch: %d, LastAttemptedSourceSwitch: %d, LastAttemptedChargerSwitch: %d\n",
 				        int(now - LastSoftSwitch), int(now - LastHardSwitch), int(now - LastAttemptedSourceSwitch), int(now - LastAttemptedChargerSwitch));
 				fprintf(stderr, "Storm mode remaining: %d\n", int(StormModeUntil - now));
@@ -340,6 +351,7 @@ void Controller::Run() {
 				desiredSource         = PowerSource::SUB;
 				desiredChargePriority = ChargerPriority::UtilitySolar;
 				wantHardSwitch        = true;
+				wantSoftSwitch        = true; // Being below our hard threshold implies that we're also below our soft threshold
 			} else if (batteryP < softBatteryGoal) {
 				// We've hit our soft limit. Switch loads to grid, to avoid battery cycling.
 				// It's more efficient to power loads directly from the grid, then using the

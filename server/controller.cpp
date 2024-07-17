@@ -420,6 +420,15 @@ void Controller::Run() {
 			if (switchSuccess && wantHardSwitch)
 				LastHardSwitch = now;
 
+			if (switchSuccess && desiredSource == PowerSource::SBU) {
+				// If we've switched back to battery power, then it means we're happy with our power state,
+				// and we must relax the +10% (or whatever our constant is) that we use to boost up and void
+				// hysterisis. If we don't reset this, then we end up ping-ponging between SBU and SUB as
+				// we go in and out of the +10% soft target.
+				LastSoftSwitch = 0;
+				LastHardSwitch = 0;
+			}
+
 		} // if (monitorIsAlive && EnableAutoCharge)
 
 		if (desiredHeavyState != CurrentHeavyLoadState) {

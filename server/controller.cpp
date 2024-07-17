@@ -271,8 +271,6 @@ void Controller::Run() {
 		// Figure out whether we should be charging from grid or not, and running loads from grid or battery
 		PowerSource     desiredSource         = CurrentPowerSource;
 		ChargerPriority desiredChargePriority = CurrentChargePriority;
-		bool            wantSoftSwitch        = false; // True if we're below our soft threshold and want to switch
-		bool            wantHardSwitch        = false; // True if we're below our hard threshold and want to switch
 
 		if (monitorIsAlive && EnableAutoCharge) {
 			float softBatteryGoal    = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
@@ -295,12 +293,11 @@ void Controller::Run() {
 			// "must charge" and "must not charge". There's actually nothing wrong with having a 105%
 			// SOC goal, because it means that you'll hang out at 100% for a while, and by the time
 			// you switch back to battery, the goal will be 95%, so you've got some headroom.
-			if (now - LastSoftSwitch < 60 * 60) {
+			if (now - LastSoftSwitch < 60 * 60)
 				softBatteryGoal += 10.0f;
-			}
-			if (now - LastHardSwitch < 60 * 60) {
+
+			if (now - LastHardSwitch < 60 * 60)
 				hardBatteryGoal += 10.0f;
-			}
 
 			if (avgBatteryP >= 100.0f)
 				LastEqualizeAt = now;
@@ -350,8 +347,6 @@ void Controller::Run() {
 				// We've hit our hard limit. We must charge at all costs.
 				desiredSource         = PowerSource::SUB;
 				desiredChargePriority = ChargerPriority::UtilitySolar;
-				wantHardSwitch        = true;
-				wantSoftSwitch        = true; // Being below our hard threshold implies that we're also below our soft threshold
 			} else if (batteryP < softBatteryGoal) {
 				// We've hit our soft limit. Switch loads to grid, to avoid battery cycling.
 				// It's more efficient to power loads directly from the grid, then using the
@@ -361,14 +356,16 @@ void Controller::Run() {
 				// round trip is more like 80%, and that doesn't include battery wear and tear.
 				desiredSource         = PowerSource::SUB;
 				desiredChargePriority = ChargerPriority::SolarOnly;
-				wantSoftSwitch        = true;
 			} else {
 				// Our battery charge is good. We can switch to battery + solar only.
 				desiredSource         = PowerSource::SBU;
 				desiredChargePriority = ChargerPriority::SolarOnly;
 			}
 
-			bool switchSuccess = false;
+			// When we reach our soft or hard target, we remove the +10% bias by setting
+			// LastHardSwitch / LastSoftSwitch = 0.
+			// If we don't do this, then we end up ping-ponging between the two states,
+			// as the +10% bias just ends up becoming the new permanent target.
 
 			if (desiredChargePriority != CurrentChargePriority &&
 			    now - SwitchChargerPriorityAt > 5 * 60 &&
@@ -384,9 +381,12 @@ void Controller::Run() {
 					ok = Monitor->RunInverterCmd(ChargerPriorityToString(desiredChargePriority));
 				}
 				if (ok) {
-					switchSuccess           = true;
 					CurrentChargePriority   = desiredChargePriority;
 					SwitchChargerPriorityAt = now;
+					if (desiredChargePriority == ChargerPriority::UtilitySolar)
+						LastHardSwitch = now;
+					else
+						LastHardSwitch = 0;
 				} else {
 					fprintf(stderr, "Switching charger priority failed\n");
 				}
@@ -406,29 +406,16 @@ void Controller::Run() {
 					ok = Monitor->RunInverterCmd(PowerSourceToString(desiredSource));
 				}
 				if (ok) {
-					switchSuccess       = true;
 					CurrentPowerSource  = desiredSource;
 					SwitchPowerSourceAt = now;
+					if (desiredSource == PowerSource::SUB)
+						LastSoftSwitch = now;
+					else
+						LastSoftSwitch = 0;
 				} else {
 					fprintf(stderr, "Switching power source failed\n");
 				}
 			}
-
-			if (switchSuccess && wantSoftSwitch)
-				LastSoftSwitch = now;
-
-			if (switchSuccess && wantHardSwitch)
-				LastHardSwitch = now;
-
-			if (switchSuccess && desiredSource == PowerSource::SBU) {
-				// If we've switched back to battery power, then it means we're happy with our power state,
-				// and we must relax the +10% (or whatever our constant is) that we use to boost up and void
-				// hysterisis. If we don't reset this, then we end up ping-ponging between SBU and SUB as
-				// we go in and out of the +10% soft target.
-				LastSoftSwitch = 0;
-				LastHardSwitch = 0;
-			}
-
 		} // if (monitorIsAlive && EnableAutoCharge)
 
 		if (desiredHeavyState != CurrentHeavyLoadState) {

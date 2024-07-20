@@ -303,9 +303,6 @@ void Controller::Run() {
 				LastEqualizeAt = now;
 
 			time_t secondsSinceLastEqualize = now - LastEqualizeAt;
-			//bool   needEqualizeSoft         = secondsSinceLastEqualize >= HoursBetweenEqualize * 3600;     // 1x maximum period has passed
-			//bool   needEqualizeHard         = secondsSinceLastEqualize >= HoursBetweenEqualize * 3600 * 2; // 2x maximum period has passed
-			//bool isEqualizeTime = nowP.AbsoluteMinute	()
 
 			if (nowP.Hour >= 17 && secondsSinceLastEqualize >= HoursBetweenEqualize * 3600) {
 				// Ensure that we give the battery a chance to balance the cells, regardless of the SOC hourly goal.

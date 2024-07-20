@@ -43,8 +43,11 @@ public:
 	int  SwitchSleepMilliseconds   = 10;    // 50hz = 20ms cycle time. Hager ESC225 have 25ms closing delay, and 15ms opening delay.
 	int  TimezoneOffsetMinutes     = 120;   // 120 = UTC+2 (Overridden by constructor)
 	bool EnableAutoCharge          = false; // Enable switching grid/inverter modes, and solar/grid charge mode, depending on battery SOC
-	int  HoursBetweenEqualize      = 24;    // Maximum hours between battery equalization. Equalization implies being at 100% SOC for 10 minutes.
-	//TimePoint EqualizeAfter             = {17, 0}; // We try to equalize after this time
+
+	// Maximum hours between battery equalization. Equalization implies being at 100% SOC for 10 minutes.
+	// Note that it's good to have a peridd less than 24 hours between equalizations, otherwise the equaliztion
+	// moment time can drift forward each day, if you're always equalizing by charging from the grid.
+	int HoursBetweenEqualize = 22;
 
 	// Minimum charge curve
 	static const int MaxNMinChargePoints = 30;

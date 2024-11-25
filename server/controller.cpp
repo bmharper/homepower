@@ -218,16 +218,24 @@ void Controller::Run() {
 		float avgLoadW       = Monitor->AvgLoadW;
 
 		HeavyLoadLock.lock();
-		auto heavyMode = CurrentHeavyLoadMode;
+		auto heavyMode  = CurrentHeavyLoadMode;
+		auto heavyState = CurrentHeavyLoadState;
 		HeavyLoadLock.unlock();
 
 		if (monitorIsAlive) {
-			bool solarExceedsLoads = avgSolarW > avgLoadW;
+			// Prevent hysteresis when our solar power is very similar to our loads, and we keep flip-flopping
+			// our heavy loads between grid and inverter.
+			// The idea here is: When we're in grid mode, make it harder to get out of it into inverter mode, by raising the bar.
+			float loadFactor = 1;
+			if (heavyState != HeavyLoadState::Inverter)
+				loadFactor = 1.3f;
+
+			bool solarExceedsLoads = avgSolarW > avgLoadW * loadFactor;
 
 			// This is a grace factor added so that we can do things like run a washing machine in the morning,
 			// even if the load exceeds the solar capacity for a while. The thing we're trying to exclude here
 			// is the situation where it's getting late in the day, and we're just needlessly draining the battery,
-			// only to have to charge it later in the evening. In this situations, we'd rather use grid power to
+			// only to have to charge it later in the evening. In these situations, we'd rather use grid power to
 			// reduce the charging/discharging losses.
 			// In my house, heavy loads in the afternoon are almost always the airconditioners.
 			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45.0f;

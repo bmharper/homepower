@@ -226,9 +226,15 @@ void Controller::Run() {
 			// Prevent hysteresis when our solar power is very similar to our loads, and we keep flip-flopping
 			// our heavy loads between grid and inverter.
 			// The idea here is: When we're in grid mode, make it harder to get out of it into inverter mode, by raising the bar.
-			float loadFactor = 1;
+			// HOWEVER! we have the additional problem that when the battery is 100% charged, then solar power will often
+			// be just about 15% more than the loads. So we can't use a big factor here, otherwise the observed solar
+			// power will never be high enough. So we push things down in the opposite direction, making loadFactor
+			// 0.7 in the low mode, and 1.1 to escape out of that.
+			// Also, biasing things slightly in favour of using battery more often happens to work well for me,
+			// in the absence of a sophisticated solar irradiation + consumption prediction system.
+			float loadFactor = 0.7;
 			if (heavyState != HeavyLoadState::Inverter)
-				loadFactor = 1.3f;
+				loadFactor = 1.1f;
 
 			bool solarExceedsLoads = avgSolarW > avgLoadW * loadFactor;
 

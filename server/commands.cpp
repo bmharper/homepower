@@ -31,6 +31,15 @@ const char* ChargerPriorityToString(ChargerPriority v) {
 	}
 }
 
+// King (6200) PCP table:
+// PCP00	SBLUCB		Solar energy charges battery first and allow the utility to charge battery
+// PCP01	SBLUDC		Solar energy charges battery first and disallow the utility to charge battery
+// PCP02	SLBUCB		Solar energy provides power to the load first and also allow the utility to charge battery
+// PCP03	SLBUDC		Solar energy will be the only charger source no matter utility is available or not
+//
+// These values are subtly different to the MKS names, but we're only interested in UtilitySolar (PCP02) and SolarOnly (PCP03),
+// so for our purposes MKS and King commands are equivalent.
+
 const char* ChargerPriorityDescribe(ChargerPriority v) {
 	switch (v) {
 	case ChargerPriority::Unknown: return "Unknown";

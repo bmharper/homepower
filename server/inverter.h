@@ -5,6 +5,14 @@
 
 namespace homepower {
 
+enum class InverterModel {
+	Unknown,
+	King_6200,
+	MKS2_5600,
+};
+
+const char* InverterModelDescribe(InverterModel v);
+
 // Inverter talks to the Axpert/Voltronic inverter over RS232 or USB
 // This was originally a standalone program, but opening and closing
 // the serial port adds a lot of overhead.
@@ -64,14 +72,15 @@ public:
 	void Close();
 
 	// Execute functions will automatically Open() if necessary
-	Response Execute(Record_QPIGS& response);
-	Response Execute(std::string cmd, std::string& response);
-	Response Execute(std::string cmd);
+	Response Execute(Record_QPIGS& response, int maxRetries);
+	Response Execute(std::string cmd, std::string& response, int maxRetries);
+	Response Execute(std::string cmd, int maxRetries);
 
-	template <typename ResponseRecord>
-	Response ExecuteT(std::string cmd, ResponseRecord& response);
+	template <typename ResponseType>
+	Response ExecuteT(std::string cmd, ResponseType& response, int maxRetries);
 
 	bool Interpret(const std::string& resp, Record_QPIGS& out);
+	bool Interpret(const std::string& resp, InverterModel& out);
 
 	static std::string DescribeResponse(Response r);
 
@@ -79,12 +88,20 @@ private:
 	std::string RawToPrintable(const std::string& raw);
 };
 
-template <typename ResponseRecord>
-inline Inverter::Response Inverter::ExecuteT(std::string cmd, ResponseRecord& response) {
+template <typename ResponseType>
+inline Inverter::Response Inverter::ExecuteT(std::string cmd, ResponseType& response, int maxRetries) {
 	std::string r;
-	auto        err = Execute(cmd, r);
+	auto        err = Execute(cmd, r, maxRetries);
 	if (err != Inverter::Response::OK)
 		return err;
+
+	// First character in response is always "(".
+	// "Interpret" functions assume length is at least 1 character long.
+	if (r.length() < 2) {
+		fprintf(stderr, "Response to %s is too short: [%s]\n", cmd.c_str(), RawToPrintable(r).c_str());
+		return Inverter::Response::FailRecvTooShort;
+	}
+
 	if (!Interpret(r, response)) {
 		fprintf(stderr, "Don't understand response to %s: [%s]\n", cmd.c_str(), RawToPrintable(r).c_str());
 		return Inverter::Response::DontUnderstand;

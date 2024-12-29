@@ -53,6 +53,10 @@ Monitor::Monitor() {
 }
 
 void Monitor::Start() {
+	InverterModel model = InverterModel::Unknown;
+	Inverter.ExecuteT("QMN", model, 10);
+	printf("Inverter model: %s\n", InverterModelDescribe(model));
+
 	Thread = thread([&]() {
 		printf("Monitor started\n");
 		Run();
@@ -67,7 +71,7 @@ void Monitor::Stop() {
 
 bool Monitor::RunInverterCmd(std::string cmd) {
 	lock_guard<mutex> lock(InverterLock);
-	auto              res = Inverter.Execute(cmd);
+	auto              res = Inverter.Execute(cmd, 0);
 	if (res != Inverter::Response::OK) {
 		fprintf(stderr, "Command '%s' failed with %s\n", cmd.c_str(), Inverter::DescribeResponse(res).c_str());
 		return false;
@@ -132,7 +136,7 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 	//printf("Reading QPIGS %f\n", (double) clock() / (double) CLOCKS_PER_SEC);
 	lock_guard<mutex>      lock(InverterLock);
 	Inverter::Record_QPIGS record;
-	auto                   res = Inverter.ExecuteT("QPIGS", record);
+	auto                   res = Inverter.ExecuteT("QPIGS", record, 0);
 	//printf("Reading QPIGS %f done\n", (double) clock() / (double) CLOCKS_PER_SEC);
 	if (res != Inverter::Response::OK) {
 		fprintf(stderr, "Failed to run inverter query. Error = %s\n", Inverter::DescribeResponse(res).c_str());

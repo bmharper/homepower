@@ -62,8 +62,8 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	// Our equalizer acts as a stopgap for this wonky logic, by ensuring that we charge to
 	// 100% after 5pm. Ideally we wouldn't need that, but I haven't thought of a way yet
 	// to avoid ping-ponging late in the afternoon without this technique.
-	MinCharge[0] = {TimePoint(8, 0), 45, 35};
-	MinCharge[1] = {TimePoint(16, 30), 90, 90};
+	MinCharge[0] = {TimePoint(8, 0), DefaultMinBatterySOC + 10, DefaultMinBatterySOC};
+	MinCharge[1] = {TimePoint(16, 30), DefaultMaxBatterySOC, DefaultMaxBatterySOC};
 
 	time_t    t  = time(nullptr);
 	struct tm lt = {0};

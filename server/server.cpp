@@ -42,6 +42,8 @@ int main(int argc, char** argv) {
 	int                defaultInverterWatts       = monitor.InverterSustainedW;
 	int                defaultBatteryWattHours    = monitor.BatteryWh;
 	int                defaultSampleWriteInterval = monitor.SampleWriteInterval;
+	int                minBatterySOC              = homepower::Controller::DefaultMinBatterySOC;
+	int                maxBatterySOC              = homepower::Controller::DefaultMaxBatterySOC;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
 		if (equals(arg, "-c")) {
@@ -89,6 +91,12 @@ int main(int argc, char** argv) {
 			monitor.SQLiteFilename = argv[i + 1];
 			monitor.DBMode         = homepower::DBModes::SQLite;
 			i++;
+		} else if (i + 1 < argc && (equals(arg, "--min"))) {
+			minBatterySOC = atoi(argv[i + 1]);
+			i++;
+		} else if (i + 1 < argc && (equals(arg, "--max"))) {
+			maxBatterySOC = atoi(argv[i + 1]);
+			i++;
 		} else if (i + 1 < argc && (equals(arg, "-s"))) {
 			monitor.SampleWriteInterval = atoi(argv[i + 1]);
 			if (monitor.SampleWriteInterval < 1 || monitor.SampleWriteInterval > 1000) {
@@ -100,6 +108,24 @@ int main(int argc, char** argv) {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
 			showHelp = true;
 		}
+	}
+
+	if (minBatterySOC <= 0 || minBatterySOC >= 100) {
+		fprintf(stderr, "Invalid min battery SOC '%d'. Valid values are 0 < SOC < 90\n", minBatterySOC);
+		return 1;
+	}
+	if (maxBatterySOC <= minBatterySOC) {
+		fprintf(stderr, "Invalid max battery SOC '%d'. Must be greater than min SOC (%d)\n", maxBatterySOC, minBatterySOC);
+		return 1;
+	}
+	if (maxBatterySOC > 90) {
+		// See justification in constructor of Controller class
+		fprintf(stderr, "Invalid max battery SOC '%d'. Max 90\n", maxBatterySOC);
+		return 1;
+	}
+	if (enableAutoCharge && !runController) {
+		fprintf(stderr, "Auto battery charge is meaningless if the controller is not enabled\n");
+		return 1;
 	}
 
 	if (showHelp) {
@@ -120,6 +146,8 @@ int main(int argc, char** argv) {
 		fprintf(stderr, " -p <postgres>     Postgres connection string separated by colons host:port:db:user:password\n");
 		fprintf(stderr, " -l <sqlite>       Sqlite DB filename (specify /dev/null as SQLite filename to disable any DB writes)\n");
 		fprintf(stderr, " -s <samples>      Sample write interval. Can be raised to limit SSD writes. Default %d\n", defaultSampleWriteInterval);
+		fprintf(stderr, " --min <soc>       Minimum battery SOC before charging from grid. Default %d\n", (int) homepower::Controller::DefaultMinBatterySOC);
+		fprintf(stderr, " --max <soc>       Maximum expected battery SOC at end of day. Default %d\n", (int) homepower::Controller::DefaultMaxBatterySOC);
 		return 1;
 	}
 
@@ -136,7 +164,9 @@ int main(int argc, char** argv) {
 	bool ok = true;
 	if (runController) {
 		homepower::Controller controller(&monitor, !debug, !debug);
-		controller.EnableAutoCharge = enableAutoCharge;
+		controller.EnableAutoCharge  = enableAutoCharge;
+		controller.MinCharge[0].Hard = minBatterySOC;
+		controller.MinCharge[0].Soft = minBatterySOC + 10;
 		controller.SetHeavyLoadState(homepower::HeavyLoadState::Grid);
 		if (controller.Start()) {
 			ok = homepower::RunHttpServer(controller);

@@ -49,6 +49,9 @@ public:
 	// moment time can drift forward each day, if you're always equalizing by charging from the grid.
 	int HoursBetweenEqualize = 22;
 
+	static const int DefaultMinBatterySOC = 35;
+	static const int DefaultMaxBatterySOC = 90;
+
 	// Minimum charge curve
 	static const int MaxNMinChargePoints = 30;
 	int              NMinCharge          = 2;        // Minimum 2, Maximum MaxNMinChargePoints (30)

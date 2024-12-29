@@ -28,6 +28,15 @@ using namespace std;
 
 namespace homepower {
 
+const char* InverterModelDescribe(InverterModel v) {
+	switch (v) {
+	case InverterModel::Unknown: return "Unknown";
+	case InverterModel::King_6200: return "King_6200";
+	case InverterModel::MKS2_5600: return "MKS2_5600";
+	}
+	return "Unknown_Enum";
+}
+
 uint16_t CRC(const uint8_t* pin, size_t len) {
 	uint16_t crc_ta[16] = {
 	    0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
@@ -172,6 +181,10 @@ Inverter::Response RecvMsg(int fd, double timeout, string& msg) {
 	}
 }
 
+Inverter::~Inverter() {
+	Close();
+}
+
 // Interpret a known command
 bool Inverter::Interpret(const std::string& resp, Record_QPIGS& out) {
 	// (000.0  00.0    228.2   50.0     0346    0337   011    429   27.00  000     095   0038  01.3  248.1  00.00  00001   10010000  00  00  00336       010
@@ -225,8 +238,17 @@ bool Inverter::Interpret(const std::string& resp, Record_QPIGS& out) {
 	return false;
 }
 
-Inverter::~Inverter() {
-	Close();
+bool Inverter::Interpret(const std::string& resp, InverterModel& out) {
+	// First character is "("
+	auto name = resp.substr(1);
+	if (name == "KING-6200")
+		out = InverterModel::King_6200;
+	else if (name == "MKS2-5600")
+		out = InverterModel::MKS2_5600;
+	else
+		return false;
+
+	return true;
 }
 
 bool Inverter::Open() {
@@ -296,16 +318,16 @@ void Inverter::Close() {
 	FD = -1;
 }
 
-Inverter::Response Inverter::Execute(Record_QPIGS& response) {
-	return ExecuteT("QPIGS", response);
+Inverter::Response Inverter::Execute(Record_QPIGS& response, int maxRetries) {
+	return ExecuteT("QPIGS", response, maxRetries);
 }
 
-Inverter::Response Inverter::Execute(string cmd) {
+Inverter::Response Inverter::Execute(string cmd, int maxRetries) {
 	string resp;
-	return Execute(cmd, resp);
+	return Execute(cmd, resp, maxRetries);
 }
 
-Inverter::Response Inverter::Execute(string cmd, std::string& response) {
+Inverter::Response Inverter::Execute(string cmd, std::string& response, int maxRetries) {
 	if (DebugResponseFile != "") {
 		FILE* f = fopen(DebugResponseFile.c_str(), "rb");
 		if (!f) {
@@ -324,34 +346,46 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response) {
 		return Response::OK;
 	}
 
-	if (FD == -1) {
-		if (!Open()) {
-			fprintf(stderr, "Inverter::Open() failed\n");
-			return Response::FailOpenFile;
-		}
-	}
-
 	auto res = Response::DontUnderstand;
-	if (SendMsg(FD, cmd)) {
-		res = RecvMsg(FD, RecvTimeout, response);
-		if (res == Response::OK) {
-			if (response == "(ACK") {
-				res = Response::OK;
-			} else if (response == "(NAK") {
-				fprintf(stderr, "NAK (Not Acknowledged). This is likely a CRC failure, so something wrong with the COM port or BAUD rate, etc\n");
-				res = Response::NAK;
+	for (int retry = 0; retry <= maxRetries; retry++) {
+		response = "";
+
+		if (retry != 0)
+			usleep(100000);
+
+		if (FD == -1) {
+			if (!Open()) {
+				fprintf(stderr, "Inverter::Open() failed\n");
+				res = Response::FailOpenFile;
+				continue;
+			}
+		}
+
+		res = Response::DontUnderstand;
+		if (SendMsg(FD, cmd)) {
+			res = RecvMsg(FD, RecvTimeout, response);
+			if (res == Response::OK) {
+				if (response == "(ACK") {
+					res = Response::OK;
+					break;
+				} else if (response == "(NAK") {
+					fprintf(stderr, "NAK (Not Acknowledged). Either this command is unrecognized, or this is likely a CRC failure, so something wrong with the COM port or BAUD rate, etc\n");
+					res = Response::NAK;
+					break;
+				} else {
+					res = Response::OK;
+					break;
+				}
 			} else {
-				res = Response::OK;
+				fprintf(stderr, "RecvMsg Fail '%s' (%d): [%s]\n", DescribeResponse(res).c_str(), (int) response.size(), RawToPrintable(response).c_str());
+				// re-open port
+				Close();
 			}
 		} else {
-			fprintf(stderr, "RecvMsg Fail '%s' (%d): [%s]\n", DescribeResponse(res).c_str(), (int) response.size(), RawToPrintable(response).c_str());
 			// re-open port
 			Close();
+			res = Response::FailWriteFile;
 		}
-	} else {
-		// re-open port
-		Close();
-		res = Response::FailWriteFile;
 	}
 
 	return res;
@@ -365,6 +399,8 @@ string Inverter::RawToPrintable(const string& raw) {
 		    (c >= 'a' && c <= 'z') ||
 		    (c >= '0' && c <= '9') ||
 		    c == ' ' ||
+		    c == '-' ||
+		    c == '_' ||
 		    c == '(' ||
 		    c == ')' ||
 		    c == '.') {

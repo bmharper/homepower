@@ -26,6 +26,7 @@ Monitor::Monitor() {
 	AvgSolarW           = 0;
 	AvgSolarV           = 0;
 	AvgBatteryP         = 0;
+	MinBatteryP         = 0;
 	MustExit            = false;
 	IsHeavyOnInverter   = false;
 	BatteryV            = 0;
@@ -220,6 +221,7 @@ void Monitor::UpdateStats(const Inverter::Record_QPIGS& r) {
 	AvgSolarW   = Average(now - 5 * 60, SolarWHistory);
 	AvgLoadW    = Average(now - 5 * 60, LoadWHistory);
 	AvgBatteryP = Average(now - 10 * 60, BatPHistory);
+	MinBatteryP = Minimum(now - 10 * 60, BatPHistory);
 
 	//if (!HasGridPower)
 	//	printf("Don't have grid power %f, %f\n", r.ACInHz, (float) GridVoltageThreshold);

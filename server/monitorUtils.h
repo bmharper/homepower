@@ -59,6 +59,21 @@ inline double Average(time_t minTime, time_t maxTime, const RingBuffer<History>&
 	return nsamples == 0 ? 0 : sum / (double) nsamples;
 }
 
+inline float Minimum(time_t afterTime, const RingBuffer<History>& history) {
+	float    minv = FLT_MAX;
+	uint32_t idx  = history.Size() - 1;
+	while (true) {
+		if (idx == -1)
+			break;
+		auto sample = history.Peek(idx);
+		if (sample.Time < afterTime)
+			break;
+		minv = std::min(minv, sample.Value);
+		idx--;
+	}
+	return minv;
+}
+
 inline float Maximum(time_t afterTime, const RingBuffer<History>& history) {
 	float    maxv = -FLT_MAX;
 	uint32_t idx  = history.Size() - 1;

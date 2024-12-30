@@ -61,5 +61,6 @@
 		"semaphore": "cpp",
 		"stop_token": "cpp"
 	},
-	"C_Cpp.default.compilerPath": "/usr/bin/g++"
+	"C_Cpp.default.compilerPath": "/usr/bin/g++",
+	"makefile.configureOnOpen": true
 }

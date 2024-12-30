@@ -36,7 +36,8 @@ public:
 	std::atomic<float> AvgLoadW;                     // Average load wattage over last 60 seconds
 	std::atomic<float> BatteryV;                     // Battery voltage
 	std::atomic<float> BatteryP;                     // Battery charge percentage (0..100)
-	std::atomic<float> AvgBatteryP;                  // Average battery charge percentage (0..100) over last 10 minutes. The 10 minutes is important for BMS equalization at 100% SOC.
+	std::atomic<float> AvgBatteryP;                  // Average battery charge percentage (0..100) over last 10 minutes.
+	std::atomic<float> MinBatteryP;                  // Minimum battery charge percentage (0..100) over last 10 minutes. The 10 minutes is important for BMS equalization at 100% SOC.
 
 	std::atomic<bool> IsHeavyOnInverter; // Set by Controller - true when heavy loads are on the inverter
 

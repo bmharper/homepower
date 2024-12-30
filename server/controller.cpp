@@ -212,7 +212,7 @@ void Controller::Run() {
 		bool  monitorIsAlive = Monitor->IsInitialized;
 		float avgSolarV      = Monitor->AvgSolarV;
 		float batteryP       = Monitor->BatteryP;
-		float avgBatteryP    = Monitor->AvgBatteryP;
+		float minBatteryP    = Monitor->MinBatteryP;
 		bool  hasGridPower   = Monitor->HasGridPower;
 		float avgSolarW      = Monitor->AvgSolarW;
 		float avgLoadW       = Monitor->AvgLoadW;
@@ -313,7 +313,8 @@ void Controller::Run() {
 			if (now - LastHardSwitch < 60 * 60)
 				hardBatteryGoal += 10.0f;
 
-			if (avgBatteryP >= 100.0f)
+			// Why not 100? Because some batteries (Pylontech UP5000) often fail to report 100, but get "stuck" at 99.
+			if (minBatteryP >= 99.0f)
 				LastEqualizeAt = now;
 
 			time_t secondsSinceLastEqualize = now - LastEqualizeAt;

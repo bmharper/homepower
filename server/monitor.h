@@ -74,6 +74,7 @@ private:
 	std::thread                        Thread;
 	std::atomic<bool>                  MustExit;
 	bool                               HasWrittenToDB = false;
+	std::string                        LastReadStatsError;
 
 	//std::mutex                         DBThreadRecordsLock;
 	//RingBuffer<Inverter::Record_QPIGS> DBThreadRecords; // Records queued to be written into DB, and owned by the DB thread

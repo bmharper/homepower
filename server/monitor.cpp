@@ -140,10 +140,17 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 	auto                   res = Inverter.ExecuteT("QPIGS", record, 0);
 	//printf("Reading QPIGS %f done\n", (double) clock() / (double) CLOCKS_PER_SEC);
 	if (res != Inverter::Response::OK) {
-		fprintf(stderr, "Failed to run inverter query. Error = %s\n", Inverter::DescribeResponse(res).c_str());
+		// Don't repeatedly show the same message, otherwise we end up spamming the logs,
+		// and shortening the life of the flash drive.
+		std::string msg = Inverter::DescribeResponse(res);
+		if (msg != LastReadStatsError) {
+			fprintf(stderr, "Failed to run inverter query. Error = %s\n", msg.c_str());
+			LastReadStatsError = msg;
+		}
 		return false;
 	}
-	record.Heavy = IsHeavyOnInverter;
+	LastReadStatsError = "";
+	record.Heavy       = IsHeavyOnInverter;
 	if (saveReading) {
 		RecordsLock.lock();
 		Records.Add(record);

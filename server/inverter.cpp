@@ -267,9 +267,15 @@ bool Inverter::Open() {
 
 	FD = open(device.c_str(), O_RDWR | O_NONBLOCK);
 	if (FD == -1) {
-		fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", device.c_str(), errno, strerror(errno));
+		// Reduce spam by only emitting the error if it's different from previous
+		if (errno != LastOpenFailErr) {
+			LastOpenFailErr = errno;
+			fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", device.c_str(), errno, strerror(errno));
+		}
 		return false;
 	}
+
+	LastOpenFailErr = 0;
 
 	// If this looks like an RS232-to-USB adapter, then set the serial port parameters
 	if (device.find("ttyUSB") != -1) {
@@ -355,7 +361,7 @@ Inverter::Response Inverter::Execute(string cmd, std::string& response, int maxR
 
 		if (FD == -1) {
 			if (!Open()) {
-				fprintf(stderr, "Inverter::Open() failed\n");
+				// Don't log an error here, because Open() will already emit a more specific error.
 				res = Response::FailOpenFile;
 				continue;
 			}

@@ -85,6 +85,8 @@ public:
 	static std::string DescribeResponse(Response r);
 
 private:
+	int LastOpenFailErr = 0;
+
 	std::string RawToPrintable(const std::string& raw);
 };
 

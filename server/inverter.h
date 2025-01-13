@@ -66,6 +66,7 @@ public:
 	int                      FD                = -1;               // File handle for talking to inverter
 	double                   RecvTimeout       = 2;                // Max timeout I've seen in practice is 1.5 seconds, on a raspberry Pi 1
 	std::string              DebugResponseFile = "";               // If not empty, then we don't actually talk to inverter, but read QPIGS response from this text file (this is for debugging/developing offline)
+	std::string              UsbRestartScript  = "";               // Script that is invoked when USB port seems to be dead
 
 	~Inverter();
 	bool Open();
@@ -85,9 +86,12 @@ public:
 	static std::string DescribeResponse(Response r);
 
 private:
-	int LastOpenFailErr = 0;
+	int    LastOpenFailErr     = 0;
+	int    UsbRestartFailCount = 0; // Number of times that USB restart script has failed
+	time_t LastUsbRestartAt    = 0;
 
 	std::string RawToPrintable(const std::string& raw);
+	void        RestartUsbAuto();
 };
 
 template <typename ResponseType>

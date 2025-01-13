@@ -54,6 +54,8 @@ public:
 	std::string PostgresUsername = "pi";        // When DBMode is Postgres, username
 	std::string PostgresPassword = "homepower"; // When DBMode is Postgres, password
 
+	std::string UsbRestartScript = ""; // Script that is invoked when USB port seems to be dead
+
 	Monitor();
 	void Start();
 	void Stop();

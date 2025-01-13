@@ -104,6 +104,9 @@ int main(int argc, char** argv) {
 				return 1;
 			}
 			i++;
+		} else if (i + 1 < argc && (equals(arg, "-u"))) {
+			monitor.UsbRestartScript = argv[i + 1];
+			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
 			showHelp = true;
@@ -148,6 +151,7 @@ int main(int argc, char** argv) {
 		fprintf(stderr, " -s <samples>      Sample write interval. Can be raised to limit SSD writes. Default %d\n", defaultSampleWriteInterval);
 		fprintf(stderr, " --min <soc>       Minimum battery SOC before charging from grid. Default %d\n", (int) homepower::Controller::DefaultMinBatterySOC);
 		fprintf(stderr, " --max <soc>       Maximum expected battery SOC at end of day. Default %d\n", (int) homepower::Controller::DefaultMaxBatterySOC);
+		fprintf(stderr, " -u <script>       Shell script to invoke if USB port seems to be dead\n");
 		return 1;
 	}
 

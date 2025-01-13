@@ -272,10 +272,16 @@ bool Inverter::Open() {
 			LastOpenFailErr = errno;
 			fprintf(stderr, "Unable to open device file '%s' (errno=%d %s)\n", device.c_str(), errno, strerror(errno));
 		}
+		if (errno == ENOENT) {
+			// I get this error when the USB port is dead (I believe it's my inverter that's at fault). A power down + power up
+			// of the USB port solves this. We allow the user to specify an arbitrary shell script that we execute in this condition.
+			RestartUsbAuto();
+		}
 		return false;
 	}
 
-	LastOpenFailErr = 0;
+	UsbRestartFailCount = 0;
+	LastOpenFailErr     = 0;
 
 	// If this looks like an RS232-to-USB adapter, then set the serial port parameters
 	if (device.find("ttyUSB") != -1) {
@@ -433,6 +439,24 @@ std::string Inverter::DescribeResponse(Response r) {
 	case Response::NAK: return "NAK";
 	};
 	return "Unknown";
+}
+
+void Inverter::RestartUsbAuto() {
+	if (UsbRestartScript == "")
+		return;
+
+	// max interval of 256 seconds
+	int delayShift = std::min(UsbRestartFailCount, 8);
+	if (time(nullptr) - LastUsbRestartAt < (1 << delayShift))
+		return;
+
+	LastUsbRestartAt    = time(nullptr);
+	UsbRestartFailCount = std::min(UsbRestartFailCount + 1, 10000);
+
+	fprintf(stderr, "Restarting USB port with script '%s'\n", UsbRestartScript.c_str());
+	int res = system(UsbRestartScript.c_str());
+	if (res != 0)
+		fprintf(stderr, "USB restart failed with exit code %d\n", res);
 }
 
 } // namespace homepower

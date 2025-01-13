@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
 			}
 			i++;
 		} else if (i + 1 < argc && (equals(arg, "-u"))) {
-			monitor.UsbRestartScript = argv[i + 1];
+			monitor.Inverter.UsbRestartScript = argv[i + 1];
 			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);

@@ -38,6 +38,7 @@ public:
 	std::atomic<float> BatteryP;                     // Battery charge percentage (0..100)
 	std::atomic<float> AvgBatteryP;                  // Average battery charge percentage (0..100) over last 10 minutes.
 	std::atomic<float> MinBatteryP;                  // Minimum battery charge percentage (0..100) over last 10 minutes. The 10 minutes is important for BMS equalization at 100% SOC.
+	std::atomic<float> HeavyLoadWatts;               // Estimated wattage load on the heavy load circuit alone.
 
 	std::atomic<bool> IsHeavyOnInverter; // Set by Controller - true when heavy loads are on the inverter
 
@@ -62,8 +63,8 @@ public:
 	bool RunInverterCmd(std::string cmd);
 
 private:
-	std::mutex                         RecordsLock;     // Guards access to Records
-	RingBuffer<Inverter::Record_QPIGS> Records;         // Records queued to be written into DB. Guarded by RecordsLock
+	std::mutex                         DBQueueLock;     // Guards access to DBQueue
+	RingBuffer<Inverter::Record_QPIGS> DBQueue;         // Records queued to be written into DB. Guarded by DBQueueLock
 	RingBuffer<History>                SolarVHistory;   // Solar voltage
 	RingBuffer<History>                LoadWHistory;    // Watts output by inverter
 	RingBuffer<History>                DeficitWHistory; // Watts that we needed to draw from the battery or the grid to meet load. This is LoadWatt - SolarWatt
@@ -76,12 +77,9 @@ private:
 	bool                               HasWrittenToDB = false;
 	std::string                        LastReadStatsError;
 
-	//std::mutex                         DBThreadRecordsLock;
-	//RingBuffer<Inverter::Record_QPIGS> DBThreadRecords; // Records queued to be written into DB, and owned by the DB thread
-
 	void Run();
 	void DBThread();
-	bool ReadInverterStats(bool saveReading);
+	bool ReadInverterStats(bool saveReading, Inverter::Record_QPIGS* r);
 	void UpdateStats(const Inverter::Record_QPIGS& r);
 	bool CommitReadings(RingBuffer<Inverter::Record_QPIGS>& records);
 };

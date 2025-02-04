@@ -27,15 +27,16 @@ Monitor::Monitor() {
 	AvgSolarV           = 0;
 	AvgBatteryP         = 0;
 	MinBatteryP         = 0;
+	HeavyLoadWatts      = 0;
 	MustExit            = false;
 	IsHeavyOnInverter   = false;
 	BatteryV            = 0;
 	BatteryP            = 0;
 	AvgLoadW            = 0;
 
-	// If Records is full, and we can't talk to the DB, then we drop records.
+	// If DBQueue is full, and we can't talk to the DB, then we drop records.
 	// A record is 272 bytes, so 256 * 275 = about 64kb
-	Records.Initialize(256);
+	DBQueue.Initialize(256);
 
 	// On a Raspberry Pi 1, it takes 0.222 milliseconds to compute an average over 4096 samples.
 	// On a Raspberry Pi 1, it takes 0.038 milliseconds to compute an average over 1024 samples.
@@ -87,18 +88,40 @@ void Monitor::Run() {
 	};
 	auto dbThread = std::thread(dbThreadFunc);
 
+	// Recent readings
+	RingBuffer<Inverter::Record_QPIGS> recent;
+	recent.Initialize(64);
+
+	// Measured delta between heavy loads off and on (values in here are always positive)
+	RingBuffer<History> heavyLoadDeltas;
+	heavyLoadDeltas.Initialize(32);
+
+	// We do the estimation of heavy load deltas in this function, to avoid storing
+	// the 'recent' and 'heavyLoadDeltas' in the class. The reason why we don't want them
+	// in the class is because it's not obvious what their thread ownership is, and I don't
+	// want to introduce another mutex for no reason. In addition, it would be confusing it
+	// have records in the DBQueue, and then another ring buffer for 'recent'.
+
 	auto lastSaveTime = 0;
 	while (!MustExit) {
-		bool saveReading = time(nullptr) - lastSaveTime >= SecondsBetweenSamples;
-		bool readOK      = false;
+		bool                   saveReading = time(nullptr) - lastSaveTime >= SecondsBetweenSamples;
+		bool                   readOK      = false;
+		Inverter::Record_QPIGS record;
 		for (int attempt = 0; attempt < 3 && !MustExit; attempt++) {
-			readOK = ReadInverterStats(saveReading);
+			// Read the inverter data, and save it to the DB queue if saveReading is true.
+			// Also update the bulk of our stats, except the heavy load estimation, which we a few lines down.
+			readOK = ReadInverterStats(saveReading, &record);
 			if (readOK)
 				break;
 		}
 		if (readOK && saveReading) {
 			lastSaveTime = time(nullptr);
 		}
+		if (readOK) {
+			recent.Add(record);
+			AnalyzeRecentReadings(recent, heavyLoadDeltas);
+		}
+		HeavyLoadWatts = EstimateHeavyLoadWatts(time(nullptr), heavyLoadDeltas);
 		usleep(500 * 1000);
 	};
 
@@ -116,12 +139,12 @@ void Monitor::DBThread() {
 	privateQueue.Initialize(256);
 
 	while (!MustExit) {
-		// Suck records out of 'Records', and move them into our private queue.
-		RecordsLock.lock();
-		while (Records.Size() != 0) {
-			privateQueue.Add(Records.Next());
+		// Suck records out of 'DBQueue', and move them into our private queue.
+		DBQueueLock.lock();
+		while (DBQueue.Size() != 0) {
+			privateQueue.Add(DBQueue.Next());
 		}
-		RecordsLock.unlock();
+		DBQueueLock.unlock();
 
 		// As soon as we have enough samples (or we have just one sample, and we've just booted up), send records to the DB
 		if (privateQueue.Size() >= SampleWriteInterval || (privateQueue.Size() >= 1 && !HasWrittenToDB)) {
@@ -133,10 +156,10 @@ void Monitor::DBThread() {
 	}
 }
 
-bool Monitor::ReadInverterStats(bool saveReading) {
+bool Monitor::ReadInverterStats(bool saveReading, Inverter::Record_QPIGS* outRecord) {
 	//printf("Reading QPIGS %f\n", (double) clock() / (double) CLOCKS_PER_SEC);
-	lock_guard<mutex>      lock(InverterLock);
 	Inverter::Record_QPIGS record;
+	lock_guard<mutex>      lock(InverterLock);
 	auto                   res = Inverter.ExecuteT("QPIGS", record, 0);
 	//printf("Reading QPIGS %f done\n", (double) clock() / (double) CLOCKS_PER_SEC);
 	if (res != Inverter::Response::OK) {
@@ -152,11 +175,14 @@ bool Monitor::ReadInverterStats(bool saveReading) {
 	LastReadStatsError = "";
 	record.Heavy       = IsHeavyOnInverter;
 	if (saveReading) {
-		RecordsLock.lock();
-		Records.Add(record);
-		RecordsLock.unlock();
+		DBQueueLock.lock();
+		DBQueue.Add(record);
+		DBQueueLock.unlock();
 	}
 	UpdateStats(record);
+	if (outRecord) {
+		*outRecord = record;
+	}
 	return true;
 }
 

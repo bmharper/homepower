@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "ringbuffer.h"
+#include "inverter.h"
 
 namespace homepower {
 
@@ -88,5 +89,17 @@ inline float Maximum(time_t afterTime, const RingBuffer<History>& history) {
 	}
 	return maxv;
 }
+
+template <typename T>
+T Clamp(T v, T vmin, T vmax) {
+	if (v < vmin)
+		return vmin;
+	if (v > vmax)
+		return vmax;
+	return v;
+}
+
+void  AnalyzeRecentReadings(RingBuffer<Inverter::Record_QPIGS>& records, RingBuffer<History>& heavyLoadDeltas);
+float EstimateHeavyLoadWatts(time_t now, const RingBuffer<History>& deltas);
 
 } // namespace homepower

@@ -216,6 +216,7 @@ void Controller::Run() {
 		bool  hasGridPower   = Monitor->HasGridPower;
 		float avgSolarW      = Monitor->AvgSolarW;
 		float avgLoadW       = Monitor->AvgLoadW;
+		float heavyLoadW     = Monitor->HeavyLoadWatts; // This is an estimate that is only updated when we switch heavy loads on and off.
 
 		HeavyLoadLock.lock();
 		auto heavyMode  = CurrentHeavyLoadMode;
@@ -236,7 +237,15 @@ void Controller::Run() {
 			if (heavyState != HeavyLoadState::Inverter)
 				loadFactor = 1.1f;
 
-			bool solarExceedsLoads = avgSolarW > avgLoadW * loadFactor;
+			// Compute an estimate of the total loads, including heavy loads.
+			// If the heavy loads are currently on the inverter, then we don't need to guess, as the total is simply
+			// the load watts that we observe. But if the heavy loads are switched off, or are on the grid, then we
+			// must add in our estimate of the heavy load circuit to compute the total load.
+			float estimatedTotalLoadW = avgLoadW;
+			if (heavyState != HeavyLoadState::Inverter)
+				estimatedTotalLoadW += heavyLoadW;
+
+			bool solarExceedsLoads = avgSolarW > estimatedTotalLoadW * loadFactor;
 
 			// This is a grace factor added so that we can do things like run a washing machine in the morning,
 			// even if the load exceeds the solar capacity for a while. The thing we're trying to exclude here

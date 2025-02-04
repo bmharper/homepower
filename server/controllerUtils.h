@@ -3,16 +3,9 @@
 #include <algorithm>
 #include <time.h>
 
-namespace homepower {
+#include "monitorUtils.h"
 
-template <typename T>
-T Clamp(T v, T vmin, T vmax) {
-	if (v < vmin)
-		return vmin;
-	if (v > vmax)
-		return vmax;
-	return v;
-}
+namespace homepower {
 
 struct TimePoint {
 	int Hour   = 0;

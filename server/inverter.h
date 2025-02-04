@@ -58,7 +58,7 @@ public:
 		std::string Unknown4;
 		std::string Unknown5;
 		std::string Unknown6;
-		bool        Heavy;
+		bool        Heavy; // Not read from inverter. This is actually our own state - whether or not heavy loads are on the inverter
 	};
 
 	std::vector<std::string> Devices           = {"/dev/hidraw0"}; // Name of devices to use, such as /dev/hidraw0 or /dev/ttyUSB0. Multiple can be specified for redundancy.

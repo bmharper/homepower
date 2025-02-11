@@ -347,7 +347,7 @@ void Controller::Run() {
 			// then they no longer use the solar power for anything besides running the inverter itself (around 50W).
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
 
-			if (monitorIsAlive && now - lastChargeMsg > 10 * 60) {
+			if (monitorIsAlive && now - lastChargeMsg > 3 * 60) {
 				lastChargeMsg = now;
 				//fprintf(stderr, "Charge - Current: %s, ChargeStartedInHour: %d, goalBatteryP: %d, batteryP: %d, solarW: %.0f, loadW: %.0f, earlyInDayOK: %s, lateInDayOK: %s, endOfDayOK: %s, sinceEqualize: %.0f\n",
 				//        PowerSourceDescribe(CurrentPowerSource), ChargeStartedInHour, goalBatteryP, batteryP, avgSolarW, avgLoadW, earlyInDayOK ? "yes" : "no", lateInDayOK ? "yes" : "no", endOfDayOK ? "yes" : "no", (float) secondsSinceLastEqualize);
@@ -357,7 +357,7 @@ void Controller::Run() {
 				fprintf(stderr, "LastSoftSwitch: %d, LastHardSwitch: %d, LastAttemptedSourceSwitch: %d, LastAttemptedChargerSwitch: %d\n",
 				        int(now - LastSoftSwitch), int(now - LastHardSwitch), int(now - LastAttemptedSourceSwitch), int(now - LastAttemptedChargerSwitch));
 				fprintf(stderr, "Storm mode remaining: %d\n", int(StormModeUntil - now));
-				fprintf(stderr, "solarW: %.0f, loadW: %.0f, sinceEqualize: %d\n", avgSolarW, avgLoadW, (int) secondsSinceLastEqualize);
+				fprintf(stderr, "solarW: %.0f, loadW: %.0f, sinceEqualize: %d, heavyLoadW: %.0f\n", avgSolarW, avgLoadW, (int) secondsSinceLastEqualize, heavyLoadW);
 				fflush(stderr);
 			}
 

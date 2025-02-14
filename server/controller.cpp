@@ -323,7 +323,8 @@ void Controller::Run() {
 				hardBatteryGoal += 10.0f;
 
 			// Why not 100? Because some batteries (Pylontech UP5000) often fail to report 100, but get "stuck" at 99.
-			if (minBatteryP >= 99.0f)
+			// UPDATE. Now they're only reporting 98. I'm starting to worry!
+			if (minBatteryP >= 98.0f)
 				LastEqualizeAt = now;
 
 			time_t secondsSinceLastEqualize = now - LastEqualizeAt;

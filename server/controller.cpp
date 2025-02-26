@@ -223,6 +223,61 @@ void Controller::Run() {
 		auto heavyState = CurrentHeavyLoadState;
 		HeavyLoadLock.unlock();
 
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// Compute our hard and soft battery SOC goals
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		float rawSoftBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
+		float rawHardBatteryGoal = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeHard);
+		float softBatteryGoal    = rawSoftBatteryGoal;
+		float hardBatteryGoal    = rawHardBatteryGoal;
+		softBatteryGoal          = Clamp(softBatteryGoal, 0.0f, 100.0f);
+		hardBatteryGoal          = Clamp(hardBatteryGoal, 0.0f, 100.0f);
+
+		bool isStormMode = now < StormModeUntil;
+		if (isStormMode) {
+			softBatteryGoal = max(softBatteryGoal, 90.0f);
+			hardBatteryGoal = max(hardBatteryGoal, 80.0f);
+		}
+
+		// If we hit either of our thresholds within the last hour, then raise the target
+		// to ensure that we overshoot it by some margin. Otherwise we ping pong along the bottom.
+		// My initial instinct here was to clamp the goals to 100%. That turns out to be a bad
+		// decision, because it means that when you're close to 100%, you start to ping pong between
+		// "must charge" and "must not charge". There's actually nothing wrong with having a 105%
+		// SOC goal, because it means that you'll hang out at 100% for a while, and by the time
+		// you switch back to battery, the goal will be 95%, so you've got some headroom.
+		if (now - LastSoftSwitch < 60 * 60)
+			softBatteryGoal += 10.0f;
+
+		if (now - LastHardSwitch < 60 * 60)
+			hardBatteryGoal += 10.0f;
+
+		// Why not 100? Because some batteries (Pylontech UP5000) often fail to report 100, but get "stuck" at 99.
+		// UPDATE. Now they're only reporting 98. I'm starting to worry! This is not normal, but something wrong
+		// with at least one of the batteries in that pair.
+		if (minBatteryP >= 98.0f)
+			LastEqualizeAt = now;
+
+		time_t secondsSinceLastEqualize = now - LastEqualizeAt;
+
+		if (nowP.Hour >= 17 && secondsSinceLastEqualize >= HoursBetweenEqualize * 3600) {
+			// Ensure that we give the battery a chance to balance the cells, regardless of the SOC hourly goal.
+			// Note that it is vital that we alter goalBatteryP up here, before any of the other decisions are made,
+			// otherwise we can end up in a situation where we switch to SUB mode, and then immediately switch back to SBU,
+			// because both sides of our "let's charge" and "we have enough" will be true at the same time.
+			// It was due to this original bug that we added the MinSecondsBetweenSBUSwitches protection logic, to
+			// prevent flipping between states too frequently. The inverter DID NOT enjoy this, and kept restarting itself.
+			// We somewhat arbitrarily choose to do equalization after 5pm, because that happens to coincide with the time
+			// when we expect the battery SOC to be close to 100%
+			// Ensure that we stay in charging mode until we're equalized.
+			// The SOC can never be 200, so this will force SUB and Grid Charge modes.
+			softBatteryGoal = max(softBatteryGoal, 200.0f);
+			hardBatteryGoal = max(hardBatteryGoal, 200.0f);
+		}
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// Hard/soft battery SOC goals END
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 		if (monitorIsAlive) {
 			// Prevent hysteresis when our solar power is very similar to our loads, and we keep flip-flopping
 			// our heavy loads between grid and inverter.
@@ -246,6 +301,7 @@ void Controller::Run() {
 				estimatedTotalLoadW += heavyLoadW;
 
 			bool solarExceedsLoads = avgSolarW > estimatedTotalLoadW * loadFactor;
+			bool haveExcessBattery = batteryP > softBatteryGoal + 5.0f;
 
 			// This is a grace factor added so that we can do things like run a washing machine in the morning,
 			// even if the load exceeds the solar capacity for a while. The thing we're trying to exclude here
@@ -255,7 +311,7 @@ void Controller::Run() {
 			// In my house, heavy loads in the afternoon are almost always the airconditioners.
 			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45.0f;
 
-			if (solarExceedsLoads) {
+			if (solarExceedsLoads || haveExcessBattery) {
 				// Use solar power for heavy loads
 				desiredHeavyState = HeavyLoadState::Inverter;
 			} else if (hasGridPower) {
@@ -296,54 +352,6 @@ void Controller::Run() {
 		ChargerPriority desiredChargePriority = CurrentChargePriority;
 
 		if (monitorIsAlive && EnableAutoCharge) {
-			float softBatteryGoal    = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeSoft);
-			float hardBatteryGoal    = TimePoint::Interpolate(nowP, NMinCharge, MinChargeTimePoints, MinChargeHard);
-			float rawSoftBatteryGoal = softBatteryGoal;
-			float rawHardBatteryGoal = hardBatteryGoal;
-			softBatteryGoal          = Clamp(softBatteryGoal, 0.0f, 100.0f);
-			hardBatteryGoal          = Clamp(hardBatteryGoal, 0.0f, 100.0f);
-
-			bool isStormMode = StormModeUntil > now;
-			if (isStormMode) {
-				softBatteryGoal = max(softBatteryGoal, 90.0f);
-				hardBatteryGoal = max(hardBatteryGoal, 80.0f);
-			}
-
-			// If we hit either of our thresholds within the last hour, then raise the target
-			// to ensure that we overshoot it by some margin. Otherwise we ping pong along the bottom.
-			// My initial instinct here was to clamp the goals to 100%. That turns out to be a bad
-			// decision, because it means that when you're close to 100%, you start to ping pong between
-			// "must charge" and "must not charge". There's actually nothing wrong with having a 105%
-			// SOC goal, because it means that you'll hang out at 100% for a while, and by the time
-			// you switch back to battery, the goal will be 95%, so you've got some headroom.
-			if (now - LastSoftSwitch < 60 * 60)
-				softBatteryGoal += 10.0f;
-
-			if (now - LastHardSwitch < 60 * 60)
-				hardBatteryGoal += 10.0f;
-
-			// Why not 100? Because some batteries (Pylontech UP5000) often fail to report 100, but get "stuck" at 99.
-			// UPDATE. Now they're only reporting 98. I'm starting to worry!
-			if (minBatteryP >= 98.0f)
-				LastEqualizeAt = now;
-
-			time_t secondsSinceLastEqualize = now - LastEqualizeAt;
-
-			if (nowP.Hour >= 17 && secondsSinceLastEqualize >= HoursBetweenEqualize * 3600) {
-				// Ensure that we give the battery a chance to balance the cells, regardless of the SOC hourly goal.
-				// Note that it is vital that we alter goalBatteryP up here, before any of the other decisions are made,
-				// otherwise we can end up in a situation where we switch to SUB mode, and then immediately switch back to SBU,
-				// because both sides of our "let's charge" and "we have enough" will be true at the same time.
-				// It was due to this original bug that we added the MinSecondsBetweenSBUSwitches protection logic, to
-				// prevent flipping between states too frequently. The inverter DID NOT enjoy this, and kept restarting itself.
-				// We somewhat arbitrarily choose to do equalization after 5pm, because that happens to coincide with the time
-				// when we expect the battery SOC to be close to 100%
-				// Ensure that we stay in charging mode until we're equalized.
-				// The SOC can never be 200, so this will force SUB and Grid Charge modes.
-				softBatteryGoal = max(softBatteryGoal, 200.0f);
-				hardBatteryGoal = max(hardBatteryGoal, 200.0f);
-			}
-
 			// A key thing about the voltronic MKS inverters is that once the battery is charged, and they're in SUB mode,
 			// then they no longer use the solar power for anything besides running the inverter itself (around 50W).
 			// For this reason, we want to be in SBU mode as much of the time as possible, so that we never waste sunlight.
@@ -371,7 +379,7 @@ void Controller::Run() {
 				desiredChargePriority = ChargerPriority::UtilitySolar;
 			} else if (batteryP < softBatteryGoal) {
 				// We've hit our soft limit. Switch loads to grid, to avoid battery cycling.
-				// It's more efficient to power loads directly from the grid, then using the
+				// It's more efficient to power loads directly from the grid, than using the
 				// grid to charge the battery, and then powering loads from the battery. I don't
 				// know what the full round-trip efficiency is, but voltronic inverter claim
 				// 90% peak, and I don't know if that's round-trip or one way. I suspect the full

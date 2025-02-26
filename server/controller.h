@@ -45,7 +45,7 @@ public:
 	bool EnableAutoCharge          = false; // Enable switching grid/inverter modes, and solar/grid charge mode, depending on battery SOC
 
 	// Maximum hours between battery equalization. Equalization implies being at 100% SOC for 10 minutes.
-	// Note that it's good to have a peridd less than 24 hours between equalizations, otherwise the equaliztion
+	// Note that it's good to have a period less than 24 hours between equalizations, otherwise the equalization
 	// moment time can drift forward each day, if you're always equalizing by charging from the grid.
 	int HoursBetweenEqualize = 22;
 

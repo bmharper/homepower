@@ -301,7 +301,10 @@ void Controller::Run() {
 				estimatedTotalLoadW += heavyLoadW;
 
 			bool solarExceedsLoads = avgSolarW > estimatedTotalLoadW * loadFactor;
-			bool haveExcessBattery = batteryP > softBatteryGoal + 5.0f;
+
+			// This doesn't work. At night it just cycles between Inverter and Grid, quite often.
+			// This is the end for me, for hackish optimization. Time to build a real predictor!
+			//bool haveExcessBattery = batteryP > softBatteryGoal + 5.0f;
 
 			// This is a grace factor added so that we can do things like run a washing machine in the morning,
 			// even if the load exceeds the solar capacity for a while. The thing we're trying to exclude here
@@ -311,7 +314,8 @@ void Controller::Run() {
 			// In my house, heavy loads in the afternoon are almost always the airconditioners.
 			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45.0f;
 
-			if (solarExceedsLoads || haveExcessBattery) {
+			//if (solarExceedsLoads || haveExcessBattery) {
+			if (solarExceedsLoads) {
 				// Use solar power for heavy loads
 				desiredHeavyState = HeavyLoadState::Inverter;
 			} else if (hasGridPower) {

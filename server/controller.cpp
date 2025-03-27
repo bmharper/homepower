@@ -12,6 +12,7 @@ const char* HeavyLoadModeToString(HeavyLoadMode mode) {
 	switch (mode) {
 	case HeavyLoadMode::AlwaysOn: return "AlwaysOn";
 	case HeavyLoadMode::OnWithSolar: return "OnWithSolar";
+	case HeavyLoadMode::Grid: return "Grid";
 	}
 	return "INVALID";
 	// unreachable
@@ -315,7 +316,10 @@ void Controller::Run() {
 			bool earlyInDayAndBatteryOK = nowP.Hour >= 7 && nowP.Hour <= 15 && batteryP >= 45.0f;
 
 			//if (solarExceedsLoads || haveExcessBattery) {
-			if (solarExceedsLoads) {
+			if (heavyMode == HeavyLoadMode::Grid) {
+				// Always use grid power for heavy loads
+				desiredHeavyState = HeavyLoadState::Grid;
+			} else if (solarExceedsLoads) {
 				// Use solar power for heavy loads
 				desiredHeavyState = HeavyLoadState::Inverter;
 			} else if (hasGridPower) {

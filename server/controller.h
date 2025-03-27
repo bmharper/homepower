@@ -16,6 +16,7 @@ class Monitor;
 enum class HeavyLoadMode {
 	AlwaysOn,    // Always keep heavy loads on (but power them from grid if we have no solar)
 	OnWithSolar, // Only power heavy loads from battery when we have solar power (but power them from grid if available)
+	Grid,        // Explicit grid
 };
 
 enum class HeavyLoadState {

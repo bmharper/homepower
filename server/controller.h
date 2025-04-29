@@ -48,7 +48,10 @@ public:
 	// Maximum hours between battery equalization. Equalization implies being at 100% SOC for 10 minutes.
 	// Note that it's good to have a period less than 24 hours between equalizations, otherwise the equalization
 	// moment time can drift forward each day, if you're always equalizing by charging from the grid.
-	int HoursBetweenEqualize = 22;
+	// However, if your batteries don't need daily equalization, then it's totally fine to make the period
+	// much longer, like many days.
+	static const int DefaultHoursBetweenEqualize = 5 * 24;
+	int              HoursBetweenEqualize        = 5 * 24;
 
 	static const int DefaultMinBatterySOC = 35;
 	static const int DefaultMaxBatterySOC = 90;

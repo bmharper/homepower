@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
 	int                defaultSampleWriteInterval = monitor.SampleWriteInterval;
 	int                minBatterySOC              = homepower::Controller::DefaultMinBatterySOC;
 	int                maxBatterySOC              = homepower::Controller::DefaultMaxBatterySOC;
+	int                hoursBetweenEqualize       = homepower::Controller::DefaultHoursBetweenEqualize;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
 		if (equals(arg, "-c")) {
@@ -107,6 +108,9 @@ int main(int argc, char** argv) {
 		} else if (i + 1 < argc && (equals(arg, "-u"))) {
 			monitor.Inverter.UsbRestartScript = argv[i + 1];
 			i++;
+		} else if (i + 1 < argc && (equals(arg, "-e"))) {
+			hoursBetweenEqualize = atoi(argv[i + 1]);
+			i++;
 		} else {
 			fprintf(stderr, "Unknown argument '%s'\n", arg);
 			showHelp = true;
@@ -130,6 +134,10 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "Auto battery charge is meaningless if the controller is not enabled\n");
 		return 1;
 	}
+	if (hoursBetweenEqualize < 1) {
+		fprintf(stderr, "Invalid hours between equalization '%d'. Must be at least 1\n", hoursBetweenEqualize);
+		return 1;
+	}
 
 	if (showHelp) {
 		fprintf(stderr, "server - Monitor Axpert/Voltronic inverter, and write stats to Postgres database\n");
@@ -150,7 +158,8 @@ int main(int argc, char** argv) {
 		fprintf(stderr, " -l <sqlite>       Sqlite DB filename (specify /dev/null as SQLite filename to disable any DB writes)\n");
 		fprintf(stderr, " -s <samples>      Sample write interval. Can be raised to limit SSD writes. Default %d\n", defaultSampleWriteInterval);
 		fprintf(stderr, " --min <soc>       Minimum battery SOC before charging from grid. Default %d\n", (int) homepower::Controller::DefaultMinBatterySOC);
-		fprintf(stderr, " --max <soc>       Maximum expected battery SOC at end of day. Default %d\n", (int) homepower::Controller::DefaultMaxBatterySOC);
+		fprintf(stderr, " --max <soc>       Minimum battery SOC at end of day. Default %d\n", (int) homepower::Controller::DefaultMaxBatterySOC);
+		fprintf(stderr, " -e <hours>        Hours between equalization (battery at 100%%). Default %d\n", (int) homepower::Controller::DefaultHoursBetweenEqualize);
 		fprintf(stderr, " -u <script>       Shell script to invoke if USB port seems to be dead\n");
 		return 1;
 	}
@@ -168,9 +177,10 @@ int main(int argc, char** argv) {
 	bool ok = true;
 	if (runController) {
 		homepower::Controller controller(&monitor, !debug, !debug);
-		controller.EnableAutoCharge  = enableAutoCharge;
-		controller.MinCharge[0].Hard = minBatterySOC;
-		controller.MinCharge[0].Soft = minBatterySOC + 10;
+		controller.EnableAutoCharge     = enableAutoCharge;
+		controller.MinCharge[0].Hard    = minBatterySOC;
+		controller.MinCharge[0].Soft    = minBatterySOC + 10;
+		controller.HoursBetweenEqualize = hoursBetweenEqualize;
 		controller.SetHeavyLoadState(homepower::HeavyLoadState::Grid);
 		if (controller.Start()) {
 			ok = homepower::RunHttpServer(controller);

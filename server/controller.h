@@ -53,8 +53,8 @@ public:
 	static const int DefaultHoursBetweenEqualize = 5 * 24;
 	int              HoursBetweenEqualize        = 5 * 24;
 
-	static const int DefaultMinBatterySOC = 35;
-	static const int DefaultMaxBatterySOC = 90;
+	static const int DefaultMinBatterySOC1 = 35;
+	static const int DefaultMinBatterySOC2 = 90;
 
 	// Minimum charge curve
 	static const int MaxNMinChargePoints = 30;

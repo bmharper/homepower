@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
 	int                defaultInverterWatts       = monitor.InverterSustainedW;
 	int                defaultBatteryWattHours    = monitor.BatteryWh;
 	int                defaultSampleWriteInterval = monitor.SampleWriteInterval;
-	int                minBatterySOC              = homepower::Controller::DefaultMinBatterySOC;
-	int                maxBatterySOC              = homepower::Controller::DefaultMaxBatterySOC;
+	int                minBatterySOC1             = homepower::Controller::DefaultMinBatterySOC1;
+	int                minBatterySOC2             = homepower::Controller::DefaultMinBatterySOC2;
 	int                hoursBetweenEqualize       = homepower::Controller::DefaultHoursBetweenEqualize;
 	for (int i = 1; i < argc; i++) {
 		const char* arg = argv[i];
@@ -92,11 +92,11 @@ int main(int argc, char** argv) {
 			monitor.SQLiteFilename = argv[i + 1];
 			monitor.DBMode         = homepower::DBModes::SQLite;
 			i++;
-		} else if (i + 1 < argc && (equals(arg, "--min"))) {
-			minBatterySOC = atoi(argv[i + 1]);
+		} else if (i + 1 < argc && (equals(arg, "--min1"))) {
+			minBatterySOC1 = atoi(argv[i + 1]);
 			i++;
-		} else if (i + 1 < argc && (equals(arg, "--max"))) {
-			maxBatterySOC = atoi(argv[i + 1]);
+		} else if (i + 1 < argc && (equals(arg, "--min2"))) {
+			minBatterySOC2 = atoi(argv[i + 1]);
 			i++;
 		} else if (i + 1 < argc && (equals(arg, "-s"))) {
 			monitor.SampleWriteInterval = atoi(argv[i + 1]);
@@ -117,17 +117,17 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	if (minBatterySOC <= 0 || minBatterySOC >= 100) {
-		fprintf(stderr, "Invalid min battery SOC '%d'. Valid values are 0 < SOC < 90\n", minBatterySOC);
+	if (minBatterySOC1 <= 0 || minBatterySOC1 >= 100) {
+		fprintf(stderr, "Invalid min1 battery SOC '%d'. Valid values are 0 < SOC < 90\n", minBatterySOC1);
 		return 1;
 	}
-	if (maxBatterySOC <= minBatterySOC) {
-		fprintf(stderr, "Invalid max battery SOC '%d'. Must be greater than min SOC (%d)\n", maxBatterySOC, minBatterySOC);
+	if (minBatterySOC2 <= minBatterySOC1) {
+		fprintf(stderr, "Invalid min2 battery SOC '%d'. Must be greater than min1 SOC (%d)\n", minBatterySOC2, minBatterySOC1);
 		return 1;
 	}
-	if (maxBatterySOC > 90) {
+	if (minBatterySOC2 > 90) {
 		// See justification in constructor of Controller class
-		fprintf(stderr, "Invalid max battery SOC '%d'. Max 90\n", maxBatterySOC);
+		fprintf(stderr, "Invalid min battery SOC '%d'. Max 90\n", minBatterySOC2);
 		return 1;
 	}
 	if (enableAutoCharge && !runController) {
@@ -157,8 +157,8 @@ int main(int argc, char** argv) {
 		fprintf(stderr, " -p <postgres>     Postgres connection string separated by colons host:port:db:user:password\n");
 		fprintf(stderr, " -l <sqlite>       Sqlite DB filename (specify /dev/null as SQLite filename to disable any DB writes)\n");
 		fprintf(stderr, " -s <samples>      Sample write interval. Can be raised to limit SSD writes. Default %d\n", defaultSampleWriteInterval);
-		fprintf(stderr, " --min <soc>       Minimum battery SOC before charging from grid. Default %d\n", (int) homepower::Controller::DefaultMinBatterySOC);
-		fprintf(stderr, " --max <soc>       Minimum battery SOC at end of day. Default %d\n", (int) homepower::Controller::DefaultMaxBatterySOC);
+		fprintf(stderr, " --min1 <soc>      Minimum battery SOC at start of day. Default %d\n", (int) homepower::Controller::DefaultMinBatterySOC1);
+		fprintf(stderr, " --min2 <soc>      Minimum battery SOC at end of day. Default %d\n", (int) homepower::Controller::DefaultMinBatterySOC2);
 		fprintf(stderr, " -e <hours>        Hours between equalization (battery at 100%%). Default %d\n", (int) homepower::Controller::DefaultHoursBetweenEqualize);
 		fprintf(stderr, " -u <script>       Shell script to invoke if USB port seems to be dead\n");
 		return 1;
@@ -177,9 +177,17 @@ int main(int argc, char** argv) {
 	bool ok = true;
 	if (runController) {
 		homepower::Controller controller(&monitor, !debug, !debug);
-		controller.EnableAutoCharge     = enableAutoCharge;
-		controller.MinCharge[0].Hard    = minBatterySOC;
-		controller.MinCharge[0].Soft    = minBatterySOC + 10;
+		controller.EnableAutoCharge = enableAutoCharge;
+
+		// Our "min1" setting governs the morning and "min2" the afternoon,
+		// so here we're just making sure that the default time points are what
+		// we expect them to be.
+		assert(controller.MinCharge[1].Time.Hour - controller.MinCharge[0].Time.Hour >= 4);
+		controller.MinCharge[0].Hard = minBatterySOC1;
+		controller.MinCharge[0].Soft = minBatterySOC1 + 10;
+		controller.MinCharge[1].Hard = minBatterySOC2;
+		controller.MinCharge[1].Soft = minBatterySOC2 + 10;
+
 		controller.HoursBetweenEqualize = hoursBetweenEqualize;
 		controller.SetHeavyLoadState(homepower::HeavyLoadState::Grid);
 		if (controller.Start()) {

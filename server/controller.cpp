@@ -63,8 +63,8 @@ Controller::Controller(homepower::Monitor* monitor, bool enableGpio, bool enable
 	// Our equalizer acts as a stopgap for this wonky logic, by ensuring that we charge to
 	// 100% after 5pm. Ideally we wouldn't need that, but I haven't thought of a way yet
 	// to avoid ping-ponging late in the afternoon without this technique.
-	MinCharge[0] = {TimePoint(8, 0), DefaultMinBatterySOC + 10, DefaultMinBatterySOC};
-	MinCharge[1] = {TimePoint(16, 30), DefaultMaxBatterySOC, DefaultMaxBatterySOC};
+	MinCharge[0] = {TimePoint(8, 0), DefaultMinBatterySOC1 + 10, DefaultMinBatterySOC1};
+	MinCharge[1] = {TimePoint(16, 30), DefaultMinBatterySOC2 + 10, DefaultMinBatterySOC2};
 
 	time_t    t  = time(nullptr);
 	struct tm lt = {0};
@@ -254,9 +254,11 @@ void Controller::Run() {
 			hardBatteryGoal += 10.0f;
 
 		// Why not 100? Because some batteries (Pylontech UP5000) often fail to report 100, but get "stuck" at 99.
-		// UPDATE. Now they're only reporting 98. I'm starting to worry! This is not normal, but something wrong
+		// UPDATE 1: Now they're only reporting 98. I'm starting to worry! This is not normal, but something wrong
 		// with at least one of the batteries in that pair.
-		if (minBatteryP >= 98.0f)
+		// UPDATE 2: By charging each of the two batteries separately, they rebalanced, and now they report
+		// charging to 100% again.
+		if (minBatteryP >= 100.0f)
 			LastEqualizeAt = now;
 
 		time_t secondsSinceLastEqualize = now - LastEqualizeAt;

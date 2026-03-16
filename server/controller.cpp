@@ -91,14 +91,14 @@ bool Controller::Start() {
 
 	MustExit = false;
 	Thread   = thread([&]() {
-        fprintf(stderr, "Controller started\n");
-        fprintf(stderr, "Auto charge: %s\n", EnableAutoCharge ? "yes" : "no");
-        if (EnableAutoCharge) {
-            PrintChargeLimits();
-        }
-        Run();
-        fprintf(stderr, "Controller exited\n");
-    });
+		fprintf(stderr, "Controller started\n");
+		fprintf(stderr, "Auto charge: %s\n", EnableAutoCharge ? "yes" : "no");
+		if (EnableAutoCharge) {
+			PrintChargeLimits();
+		}
+		Run();
+		fprintf(stderr, "Controller exited\n");
+	});
 
 	return true;
 }
@@ -162,6 +162,8 @@ void Controller::SetHeavyLoadState(HeavyLoadState m, bool forceWrite) {
 		return;
 
 	fprintf(stderr, "Set heavy load state to %s\n", HeavyLoadStateToString(m));
+	if (!EnableGpio)
+		fprintf(stderr, "EnableGpio = false, so not changing GPIO state\n");
 
 	// Ideally, we'd use a switchover device that can do zero crossing,
 	// which means the switch waits until the AC signal crosses over 0 voltage.
@@ -335,6 +337,17 @@ void Controller::Run() {
 
 			if (Monitor->IsBatteryOverloaded || Monitor->IsOutputOverloaded || batteryP < 40.0f)
 				desiredHeavyState = HeavyLoadState::Grid;
+		} else {
+			// Without the monitor being alive, our heavy load state decision is simple
+			switch (heavyMode) {
+			case HeavyLoadMode::Grid:
+			case HeavyLoadMode::OnWithSolar:
+				desiredHeavyState = HeavyLoadState::Grid;
+				break;
+			case HeavyLoadMode::AlwaysOn:
+				desiredHeavyState = HeavyLoadState::Inverter;
+				break;
+			}
 		}
 
 		if (desiredHeavyState == HeavyLoadState::Grid && !hasGridPower) {
